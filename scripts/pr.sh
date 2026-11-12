@@ -6,11 +6,22 @@
 # arrives through a pull request. This helper runs that loop: it branches from
 # main, commits the working tree, pushes, opens the PR, and rebase-merges it.
 #
+# Two kinds of transient git failure are contained here rather than surfaced:
+# another process holding .git/index.lock, and the sandbox occasionally failing
+# to create a lock file ("Could not create new item [0x186a1]"). Reads never take
+# the optional index lock, writes that hit a lock are retried with backoff, and a
+# lock file is never deleted while another process might own it.
+#
 # Usage: scripts/pr.sh [options] "<commit message>"
 # See --help for options.
 set -euo pipefail
 
 BASE_BRANCH="main"
+
+# `git status` and friends only take the optional index lock to refresh cached
+# stat data. This script never needs that refresh, and skipping it removes the
+# main surface for transient lock-creation failures.
+export GIT_OPTIONAL_LOCKS=0
 
 usage() {
   cat <<'EOF'
@@ -29,8 +40,54 @@ Options:
 
 Examples:
   scripts/pr.sh "Add locale strings for image-budget"
-  scripts/pr.sh -d -b fix/limits "Guard against an empty provider limit"
+  scripts/pr.sh -d -b fix/limits "Guard against an empty limit"
 EOF
+}
+
+# git_transient <stderr-file>: true when a failure is lock contention or a
+# transient sandbox refusal to create a lock file, not a real problem.
+git_transient() {
+  grep -qiE \
+    'could not create new item|unable to create .*\.lock|another git process seems to be running|index\.lock.*file exists' \
+    "$1"
+}
+
+# git_retry <git args...>: run git, retrying only lock-level failures.
+git_retry() {
+  local attempts=4 delay=0.2 n=1 rc=0 err
+  if ! err="$(mktemp "${TMPDIR:-/tmp}/dsh-plugins-git.XXXXXX")"; then
+    git "$@"
+    return $?
+  fi
+  while [ "$n" -le "$attempts" ]; do
+    if git "$@" 2>"$err"; then
+      # A successful command can still print the sandbox's benign lock notice.
+      grep -v 'Could not create new item' "$err" >&2 || true
+      rm -f "$err"
+      return 0
+    else
+      rc=$?
+    fi
+    if ! git_transient "$err"; then
+      cat "$err" >&2
+      rm -f "$err"
+      return "$rc"
+    fi
+    if [ "$n" -eq "$attempts" ]; then
+      cat "$err" >&2
+      printf 'git_retry: giving up after %d attempts\n' "$attempts" >&2
+      rm -f "$err"
+      return "$rc"
+    fi
+    printf '  ~ transient git lock failure (attempt %d/%d), retrying in %ss\n' \
+      "$n" "$attempts" "$delay" >&2
+    sleep "$delay"
+    n=$((n + 1))
+    case "$n" in
+      3) delay=0.5 ;;
+      4) delay=1 ;;
+    esac
+  done
 }
 
 branch_name=""
@@ -108,7 +165,8 @@ if [ "$current" != "$BASE_BRANCH" ]; then
   exit 1
 fi
 
-if [ -z "$(git status --porcelain)" ]; then
+changes="$(git_retry status --porcelain)"
+if [ -z "$changes" ]; then
   echo 'refusing: no changes to commit' >&2
   exit 1
 fi
@@ -138,17 +196,26 @@ run() {
   fi
 }
 
+run_git() {
+  if [ "$dry_run" -eq 1 ]; then
+    printf '  + git %s\n' "$*"
+  else
+    printf '  > git %s\n' "$*"
+    git_retry "$@"
+  fi
+}
+
 echo "Branch: $branch_name"
 echo "Title:  $title"
 
-run git switch -c "$branch_name"
-run git add -A
+run_git switch -c "$branch_name"
+run_git add -A
 if [ -n "$body" ]; then
-  run git commit -m "$subject" -m "$body"
+  run_git commit -m "$subject" -m "$body"
 else
-  run git commit -m "$subject"
+  run_git commit -m "$subject"
 fi
-run git push -u origin "$branch_name"
+run_git push -u origin "$branch_name"
 
 if [ "$dry_run" -eq 1 ]; then
   printf '  + gh pr create --base %s --head %s --title %s\n' "$BASE_BRANCH" "$branch_name" "$title"
@@ -171,9 +238,12 @@ echo "PR: $pr_url"
 
 gh pr merge "$pr_url" --rebase --delete-branch
 
-git switch "$BASE_BRANCH"
-git pull --ff-only --quiet
-git branch -D "$branch_name" >/dev/null 2>&1 || true
-git fetch --prune --quiet || true
+# The change is merged; local tidy-up problems must not read as a failed run.
+git_retry switch "$BASE_BRANCH" \
+  || printf 'warning: could not switch to %s; run: git switch %s\n' "$BASE_BRANCH" "$BASE_BRANCH" >&2
+git_retry pull --ff-only --quiet \
+  || printf 'warning: could not fast-forward %s; run: git pull --ff-only\n' "$BASE_BRANCH" >&2
+git_retry branch -D "$branch_name" >/dev/null 2>&1 || true
+git_retry fetch --prune --quiet || true
 
 echo "Merged on $BASE_BRANCH: $(git log -1 --format='%h %s')"
