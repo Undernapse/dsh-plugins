@@ -32,6 +32,16 @@ Each package runs its own suite with Node's built-in test runner:
 cd dsh-image-budget && node --test test/
 ```
 
+## Contributing
+
+`main` is protected by the organization's **Holy main** ruleset, so every change
+lands through a pull request. See [CONTRIBUTING.md](CONTRIBUTING.md), or let the
+helper run the loop:
+
+```sh
+scripts/pr.sh "Add locale strings for image-budget"
+```
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
