@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Image budget",
+    "description": "Keeps model requests under an image cap by replacing the oldest images with path references the model can re-open on demand."
+  }
+}

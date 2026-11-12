@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Test and coverage output
+coverage/
+.nyc_output/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Editor and OS files
+.DS_Store
+.idea/
+.vscode/
+*.swp

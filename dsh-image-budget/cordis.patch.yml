@@ -1,0 +1,22 @@
+# The image-budget bundle patch: one row that keeps model requests within the
+# image limit their provider route declares. The plugin reads that limit from
+# the adapter's configuration (for example `maxRequestImages` on a pi-ai
+# provider), and learns it from the provider when the provider only states it
+# in an error. Only routes that never state a limit use the `maxImages`
+# fallback, which is deliberately unset by default.
+- insert:
+    - id: image-budget
+      name: '@undernapse/dsh-image-budget'
+      config:
+        # Per-route overrides for providers whose configuration states no
+        # limit. Empty by default: the provider is the source of truth.
+        providerLimits: {}
+        # Spare images kept below a known hard limit when retrying.
+        recoveryMargin: 1
+        # Record offloads before each request instead of waiting for a failure.
+        proactive: true
+        # Recover from provider errors such as "At most 25 image(s) may be
+        # provided in one prompt" by offloading the oldest and retrying.
+        recoverFromProviderErrors: true
+        # Optional last-resort cap for routes that never state a limit:
+        # maxImages: 20

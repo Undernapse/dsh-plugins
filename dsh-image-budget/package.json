@@ -1,0 +1,26 @@
+{
+  "name": "@undernapse/dsh-image-budget",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Keeps model requests under an image cap by durably referencing the oldest images instead of sending them",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "lib/budget.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "license": "MIT"
+}
