@@ -35,6 +35,20 @@ first line as the PR title and the rest as the body, and rebase-merges the PR.
 Use `--dry-run` to preview the commands, `--draft` to stop after opening the PR,
 and `--branch` / `--title` to override the generated names.
 
+### Transient git failures
+
+Another process refreshing the index, or the file sandbox refusing to create a
+lock file, can make a single git call fail even though the repository is healthy.
+The helper contains that instead of failing the run:
+
+- read-only commands run with `GIT_OPTIONAL_LOCKS=0`, so they never write the index;
+- lock-level failures (`.git/index.lock`, `Could not create new item [0x186a1]`)
+  are retried up to four times with backoff;
+- the sandbox's benign creation notice is dropped when the call succeeded;
+- real errors are printed unchanged and are never retried.
+
+A lock file is never deleted: another process may still own it.
+
 ## Checks
 
 Run the affected plugin's suite before opening a PR:
