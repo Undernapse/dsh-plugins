@@ -1,0 +1,49 @@
+{
+  "name": "@undernapse/dsh-github-issue-workflow",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Starts an uworkflow command from a GitHub issue link's right-click menu, in a new session or the current one",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Undernapse/dsh-plugins.git",
+    "directory": "dsh-github-issue-workflow"
+  },
+  "type": "module",
+  "main": "index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-context-menu",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-api-session-controller"
+      ]
+    }
+  },
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "license": "MIT"
+}

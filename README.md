@@ -9,6 +9,7 @@ Undernapse. Each subdirectory is a self-contained plugin package with its own
 | Plugin | What it does |
 | --- | --- |
 | [`dsh-image-budget`](dsh-image-budget/README.md) | Keeps every model request within the image limit its provider route states, replacing the oldest images with durable references instead of sending them. |
+| [`dsh-github-issue-workflow`](dsh-github-issue-workflow/README.md) | Right-click a GitHub issue link to start `/ugo`, `/ufast`, or `/uloop` on it, in a new session or the current one. |
 
 ## Install a plugin
 
