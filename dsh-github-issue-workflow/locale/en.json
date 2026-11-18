@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "GitHub issue workflow",
+    "description": "Right-click a GitHub issue link to run /ugo, /ufast, or /uloop on it. Each command asks for a new session, which opens with the command in its composer, or this session, which receives the command at once."
+  }
+}

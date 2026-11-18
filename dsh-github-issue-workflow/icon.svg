@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" width="36" height="36" role="img" aria-label="GitHub issue workflow">
+  <g fill="none" stroke="#6f7fd8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="14.5" cy="18.5" r="8.5"/>
+    <path d="M20.9 12.1L28 8.2"/>
+    <path d="M25.2 8.4L28 8.2 26.4 10.5"/>
+  </g>
+  <circle cx="14.5" cy="18.5" r="3.1" fill="#6f7fd8"/>
+</svg>
