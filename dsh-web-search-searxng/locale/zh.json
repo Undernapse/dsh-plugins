@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "SearXNG 网页搜索",
+    "description": "通过你的 SearXNG 实例搜索网页，现有的 web_search 工具会使用该实例的搜索引擎。实例必须可从 Harness 主机访问，并开启 JSON API；可在插件配置行中修改实例地址。聊天中的搜索状态会显示每次搜索引用的站点图标和数量；被跨域重定向中断的 web_fetch 会自动恢复。"
+  }
+}

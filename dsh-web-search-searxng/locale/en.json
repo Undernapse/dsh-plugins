@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "SearXNG web search",
+    "description": "Searches the web through your SearXNG instance, so the existing web_search tool uses its engines. The instance must be reachable from the Harness host and expose its JSON API; change the endpoint in the plugin's config row. Chat's search status shows a favicon and count for the sites each search cited, and a web_fetch stopped at a cross-origin redirect is recovered automatically."
+  }
+}

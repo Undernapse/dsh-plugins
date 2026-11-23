@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" width="36" height="36" role="img" aria-label="SearXNG web search">
+  <circle cx="15.5" cy="15.5" r="8.4" fill="none" stroke="#4f7cff" stroke-width="2.6"/>
+  <path d="M21.9 21.9 28.4 28.4" fill="none" stroke="#4f7cff" stroke-width="3" stroke-linecap="round"/>
+  <g fill="none" stroke="#2fa795" stroke-width="1.8" stroke-linecap="round">
+    <path d="M11.4 13.1h8.2"/>
+    <path d="M11.4 16.2h6.5"/>
+    <path d="M11.4 19.3h4.8"/>
+  </g>
+</svg>
