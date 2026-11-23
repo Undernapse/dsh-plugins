@@ -203,6 +203,8 @@ test('issue links from every supported tracker get the menu', () => {
 		'https://github.enterprise.example/acme/widgets/issues/4',
 		'https://git.example.org:3000/acme/widgets/issues/9#issuecomment-1',
 		'https://codeberg.org/forgejo/forgejo/issues/1234',
+		'//git.example.org/acme/widgets/issues/9',
+		'https://git.example.org/a%20b/c/issues/1',
 	];
 	for (const url of tracked) assert.equal(resolve(url).length, 3, url);
 });
@@ -237,6 +239,13 @@ test('the command line keeps the clicked host, scheme, and port', () => {
 		'/uloop https://git.example.org:3000/acme/widgets/issues/9',
 		'/ugo http://forgejo.example.org/acme/widgets/issues/5',
 	]);
+});
+
+test('credentials in a link are dropped from the canonical URL', () => {
+	const { contribution, started } = mount();
+	const action = contribution.resolve({ sessionId: 's1', url: 'https://token@sso.example.org/acme/widgets/issues/3' })[0];
+	action.children[1].run();
+	assert.deepEqual(started[0].options.prompt, '/ugo https://sso.example.org/acme/widgets/issues/3');
 });
 
 test('a new session opens with the canonical command in its composer, unsent', () => {

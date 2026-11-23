@@ -50,7 +50,12 @@ A link is an issue when its path is `/<owner>/<repo>/issues/<n>` with an
 optional trailing path. All four supported trackers serve an issue at that
 shape on their own host, so the rule reads the path and never needs a list of
 instances: a Forgejo or Gitea deployment on any domain works without
-configuration.
+configuration. Exactly two segments may precede `issues`, the owner and the
+repository.
+
+The command line then carries the canonical URL: a fragment, query, and any
+trailing path after the issue number are dropped, as are credentials in the
+link and a `www.` host label, while the scheme, host, and port are kept.
 
 These stay out:
 
@@ -97,7 +102,10 @@ dsh plugin --profile <profile> add file:"$PWD"
 
 or install the directory as a bundle through the plugin manager
 (`install_bundle` with the absolute package path). The bundle patch inserts the
-row `tracker-issue-workflow` and the Client half registers itself at boot.
+row `tracker-issue-workflow` and the Client half registers itself at boot. A
+profile that still lists the old `github-issue-workflow` row needs that row
+removed first; see [Renamed from
+`dsh-github-issue-workflow`](#renamed-from-dsh-github-issue-workflow).
 
 ### Renamed from `dsh-github-issue-workflow`
 
