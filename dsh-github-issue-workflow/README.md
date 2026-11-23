@@ -19,10 +19,11 @@ Right-click `https://github.com/owner/repo/issues/12` and pick a command:
 
 Each command then asks where to run:
 
-- **Open a new session and run** — a session opens in the Workspace that holds
-  the Session you right-clicked in (or the most recent Workspace), receives
-  `/ufast https://github.com/owner/repo/issues/12` immediately, and starts the
-  turn without another click. Before any Workspace exists the command is left
+- **Open a new session and run** — a session opens in the Workspace at the
+  clicked Session's directory (else the most recent Workspace), the command is
+  put in its composer, and the composer submits it through the same path as
+  pressing Enter, so `/ufast` resolves to the workflow skill and the turn
+  starts without another click. Before any Workspace exists the command is left
   unsent in the new session's composer instead, because the Host needs a
   Workspace to attach the Session.
 - **Open a new session (not sent)** — a session opens in the current or most

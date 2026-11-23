@@ -1,6 +1,6 @@
 {
   "name": "@undernapse/dsh-github-issue-workflow",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Starts an uworkflow command from a GitHub issue link's right-click menu, in a new session that runs it or the current one",
   "repository": {
