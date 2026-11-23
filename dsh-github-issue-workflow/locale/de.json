@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "GitHub-Issue-Workflow",
-    "description": "Rechtsklick auf einen GitHub-Issue-Link führt /ugo, /ufast oder /uloop dafür aus. Eine neue Sitzung öffnet sich mit dem Befehl im Eingabefeld, noch nicht gesendet; das Senden an diese Sitzung stellt den Befehl sofort in die Warteschlange."
+    "description": "Rechtsklick auf einen GitHub-Issue-Link führt /ugo, /ufast oder /uloop dafür aus. Eine neue Sitzung öffnet sich und startet den Befehl sofort, oder öffnet ihn ungesendet zur Prüfung; das Senden an diese Sitzung stellt den Befehl sofort in die Warteschlange."
   }
 }

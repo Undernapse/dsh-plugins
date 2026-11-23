@@ -19,6 +19,12 @@ Right-click `https://github.com/owner/repo/issues/12` and pick a command:
 
 Each command then asks where to run:
 
+- **Open a new session and run** — a session opens in the Workspace that holds
+  the Session you right-clicked in (or the most recent Workspace), receives
+  `/ufast https://github.com/owner/repo/issues/12` immediately, and starts the
+  turn without another click. Before any Workspace exists the command is left
+  unsent in the new session's composer instead, because the Host needs a
+  Workspace to attach the Session.
 - **Open a new session (not sent)** — a session opens in the current or most
   recent workspace with `/ufast https://github.com/owner/repo/issues/12`
   typed in the composer. Nothing runs until you send it, so you can adjust the
@@ -31,14 +37,17 @@ Each command then asks where to run:
 
 The command line always carries the canonical issue URL, without a fragment or
 tracking query. A session that can no longer receive a message (for example
-after it was closed in the page) is offered only the new-session destination.
+after it was closed in the page) is offered only the two new-session
+destinations.
 
 ## Where the menu is registered
 
 The plugin contributes to the Web context-menu service for `url` targets, the
 same service as the built-in Open in sidebar, Open in external browser, and
 Copy link address actions, with `order: 300` so it sits below them. The Client
-half is the whole feature; the Host row only makes it load.
+half is the whole feature; the Host row only makes it load. It reads the
+Workspace and Session list snapshots to choose where a new Session goes, and
+uses the Workspace service to create or reuse the blank before opening it.
 
 ## Commands, copy, and languages
 
@@ -71,5 +80,6 @@ node --test test/
 
 The suite loads `client.js` through a stand-in for the browser module loader,
 so it exercises the shipped menu registration: which links it offers, the
-text it builds, both delivery paths, and the destination it withholds when the
-session cannot receive a message.
+text it builds, the run and draft new-session paths, the current-session
+delivery path, and the destination it withholds when the session cannot receive
+a message.
