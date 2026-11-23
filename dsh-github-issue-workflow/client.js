@@ -186,10 +186,21 @@ window.__ModuleLoader__.load({
 		}
 
 		/**
-		 * The Workspace a new Session should join: the one that lists the
-		 * Session whose link was clicked, else the most recently active
-		 * Workspace, mirroring the New Session action. A Workspace is what the
-		 * Host attaches the Session to, so a cwd alone would leave it ungrouped.
+		 * One-line reason for a rejected destination action, for the toast that
+		 * replaces the generic failure copy.
+		 * @param {unknown} error - rejection reason.
+		 * @returns {string} the message, or the stringified value.
+		 */
+		function errorText(error) {
+			return error instanceof Error ? error.message : String(error)
+		}
+
+		/**
+		 * The Workspace a new Session should join: the one at the clicked
+		 * Session's directory, else the one that lists it, else the most
+		 * recently active Workspace, mirroring the New Session action. A
+		 * Workspace is what the Host attaches the Session to, so a cwd alone
+		 * would leave it ungrouped.
 		 * @param {object} ctx - plugin context.
 		 * @param {string} sessionId - Session that owns the clicked link.
 		 * @returns {string | undefined} the Workspace id, or undefined before any Workspace exists.
@@ -197,6 +208,9 @@ window.__ModuleLoader__.load({
 		function preferredWorkspace(ctx, sessionId) {
 			const workspaces = ctx.workspaces.list.getSnapshot()
 			const sessions = ctx.sessions.list.getSnapshot()
+			const cwd = sessions.byId[sessionId]?.cwd
+			const atCwd = cwd === undefined ? undefined : workspaces.items.find(item => item.path === cwd)
+			if (atCwd !== undefined) return atCwd.workspaceId
 			const owner = workspaces.items.find(item => item.sessionIds.includes(sessionId))
 			if (owner !== undefined) return owner.workspaceId
 			let selected
@@ -257,16 +271,19 @@ window.__ModuleLoader__.load({
 
 		/**
 		 * Open a new Session in the Workspace that holds the clicked Session
-		 * and send the command into it, so the workflow starts without another
-		 * click. Falls back to the unsent draft when no Workspace exists yet,
-		 * because the Host needs one to attach the Session and the default
-		 * Workspace is created only by the New Session flow.
+		 * and run the command there, so the workflow starts without another
+		 * click. The command goes through the new Session's own composer submit
+		 * path, which is what resolves `/ufast` into its skill; a raw Host prompt
+		 * would carry the slash text as an ordinary message instead. Falls back
+		 * to the unsent draft when no Workspace exists yet, because the Host
+		 * needs one to attach the Session and the default Workspace is created
+		 * only by the New Session flow.
 		 * @param {object} ctx - plugin context.
 		 * @param {string} sessionId - Session that owns the clicked link.
 		 * @param {string} command - slash command without its slash.
 		 * @param {{url: string}} issue - captured issue.
 		 * @param {(key: string, params?: object) => string} t - localized copy.
-		 * @returns {Promise<void>} completion after the Host accepts the prompt.
+		 * @returns {Promise<void>} completion after the new Session accepts the draft.
 		 */
 		async function runInNewSession(ctx, sessionId, command, issue, t) {
 			const workspaceId = preferredWorkspace(ctx, sessionId)
@@ -276,7 +293,18 @@ window.__ModuleLoader__.load({
 			}
 			const target = await ctx.uiWorkspace.connectWorkspace(workspaceId)
 			ctx.uiWorkspace.openSession(target)
-			await deliver(ctx, target, commandLine(command, issue))
+			const binding = ctx.sessions.binding(target)
+			const scope = ctx.sessions.scope(target)
+			const conversation = scope?.get('conversation')
+			if (binding === undefined || scope === undefined || conversation === undefined) {
+				throw new Error('github-issue-workflow: the new session has no composer yet')
+			}
+			const prepared = conversation.input.requestDraftInitialization(binding, {
+				prompt: commandLine(command, issue),
+				whenDraftExists: 'append',
+			})
+			if (prepared !== 'applied') throw new Error(`github-issue-workflow: the composer ${prepared} the command`)
+			conversation.input.for(scope).submit()
 			ctx.contextMenus.notify(t('notice.started', { command: `/${command}` }), true)
 		}
 
@@ -339,8 +367,9 @@ window.__ModuleLoader__.load({
 								{
 									id: `${command.id}:run`,
 									label: t('target.run'),
-									failureLabel: t('failure.new'),
-									run: () => runInNewSession(ctx, target.sessionId, command.id, issue, t),
+									run: () => runInNewSession(ctx, target.sessionId, command.id, issue, t).catch((error) => {
+										ctx.contextMenus.notify(`${t('failure.new')}: ${errorText(error)}`, false)
+									}),
 								},
 								{
 									id: `${command.id}:new`,

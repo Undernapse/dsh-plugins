@@ -21,11 +21,13 @@ const ISSUE = 'https://github.com/acme/widgets/issues/12';
 
 /**
  * Minimal stand-in for the Client context: the two Session delivery paths, the
- * Workspace navigation calls, menu registration, and locale dictionaries.
- * @param {{locale?: string, scope?: boolean, binding?: boolean, running?: boolean, workspace?: boolean}} [options]
- *   which paths answer, whether the session is mid-turn, and whether a Workspace exists.
+ * Workspace navigation calls, the composer submit plane, menu registration, and
+ * locale dictionaries.
+ * @param {{locale?: string, scope?: boolean, binding?: boolean, running?: boolean, workspace?: boolean, draftResult?: string}} [options]
+ *   which paths answer, whether the session is mid-turn, whether a Workspace
+ *   exists, and what the composer reports for a draft initialization.
  */
-function createContext({ locale = 'en', scope = true, binding = true, running = false, workspace = true } = {}) {
+function createContext({ locale = 'en', scope = true, binding = true, running = false, workspace = true, draftResult = 'applied' } = {}) {
 	const contributions = [];
 	const notices = [];
 	const started = [];
@@ -33,6 +35,8 @@ function createContext({ locale = 'en', scope = true, binding = true, running = 
 	const opened = [];
 	const sent = [];
 	const prompts = [];
+	const prepared = [];
+	const submitted = [];
 	const dictionaries = new Map();
 	const ctx = {
 		effect(run) {
@@ -73,17 +77,35 @@ function createContext({ locale = 'en', scope = true, binding = true, running = 
 			},
 			scope(sessionId) {
 				if (!scope) return undefined;
-				return {
-					conversation: {
-						async send(text) {
-							sent.push({ sessionId, text });
+				const conversation = {
+					async send(text) {
+						sent.push({ sessionId, text });
+					},
+					input: {
+						requestDraftInitialization(binding, options) {
+							prepared.push({ sessionId, binding: binding.sessionId, options });
+							return draftResult;
+						},
+						for() {
+							return {
+								submit() {
+									submitted.push(sessionId);
+								},
+							};
 						},
 					},
+				};
+				return {
+					get(name) {
+						return name === 'conversation' ? conversation : undefined;
+					},
+					conversation,
 				};
 			},
 			binding(sessionId) {
 				if (!binding) return undefined;
 				return {
+					sessionId,
 					session: {
 						getSnapshot() {
 							return { running };
@@ -122,7 +144,7 @@ function createContext({ locale = 'en', scope = true, binding = true, running = 
 			},
 		},
 	};
-	return { ctx, contributions, notices, started, connected, opened, sent, prompts };
+	return { ctx, contributions, notices, started, connected, opened, sent, prompts, prepared, submitted };
 }
 
 /**
@@ -197,7 +219,7 @@ test('a new session opens with the canonical command in its composer, unsent', (
 });
 
 test('a new session opens in the clicked session’s workspace and runs the command at once', async () => {
-	const { contribution, connected, opened, started, sent, notices } = mount();
+	const { contribution, connected, opened, started, sent, prepared, submitted, notices } = mount();
 	const action = contribution.resolve({
 		sessionId: 's9',
 		url: 'https://github.com/acme/widgets/issues/12#issuecomment-3456',
@@ -206,8 +228,27 @@ test('a new session opens in the clicked session’s workspace and runs the comm
 	assert.deepEqual(connected, ['w1']);
 	assert.deepEqual(opened, ['new1']);
 	assert.deepEqual(started, []);
-	assert.deepEqual(sent, [{ sessionId: 'new1', text: '/ufast https://github.com/acme/widgets/issues/12' }]);
+	assert.deepEqual(sent, []);
+	assert.deepEqual(prepared, [{
+		sessionId: 'new1',
+		binding: 'new1',
+		options: {
+			prompt: '/ufast https://github.com/acme/widgets/issues/12',
+			whenDraftExists: 'append',
+		},
+	}]);
+	assert.deepEqual(submitted, ['new1']);
 	assert.deepEqual(notices, [{ text: 'Started /ufast in a new session', success: true }]);
+});
+
+test('a composer that will not take the command reports why instead of sending something else', async () => {
+	const { contribution, submitted, notices } = mount({ draftResult: 'blocked' });
+	const action = contribution.resolve({ sessionId: 's1', url: ISSUE })[1];
+	await action.children[0].run();
+	assert.deepEqual(submitted, []);
+	assert.equal(notices.length, 1);
+	assert.equal(notices[0].success, false);
+	assert.match(notices[0].text, /^Could not start the command in a new session: /);
 });
 
 test('with no Workspace yet the run destination falls back to the unsent draft', async () => {
