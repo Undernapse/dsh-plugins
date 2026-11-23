@@ -1,21 +1,26 @@
 /**
- * GitHub issue workflow — the right-click menu of a GitHub issue link.
+ * Tracker issue workflow — the right-click menu of an issue link.
  *
- * A GitHub issue URL captured by the Web context-menu service (`kind: 'url'`,
- * from a chat link or a web tool result) offers the uworkflow commands that
- * fit an issue: `/ugo`, `/ufast`, and `/uloop`. Each command asks where to run
- * and then either opens a new Session and sends the command into it, opens a
- * new Session with the command in its composer for review, or sends the
- * command into the Session the link was clicked in.
+ * An issue URL captured by the Web context-menu service (`kind: 'url'`, from a
+ * chat link or a web tool result) offers the uworkflow commands that fit an
+ * issue: `/ugo`, `/ufast`, and `/uloop`. Each command asks where to run and
+ * then either opens a new Session and sends the command into it, opens a new
+ * Session with the command in its composer for review, or sends the command
+ * into the Session the link was clicked in.
+ *
+ * The commands fit any tracker the workflow skills can drive, so the menu
+ * follows the issue URL shape rather than one host: GitHub, GitHub Enterprise,
+ * Forgejo, and Gitea serve an issue at `/<owner>/<repo>/issues/<n>` on their
+ * own host, which is the whole rule `issueFromUrl` applies.
  *
  * The bundle must stay one self-contained script: the browser module loader
  * serves it as a factory and does not resolve relative imports.
  */
 window.__ModuleLoader__.load({
-	id: '@undernapse/dsh-github-issue-workflow',
+	id: '@undernapse/dsh-tracker-issue-workflow',
 	factory() {
 		/** Client locale namespace owned by this plugin. */
-		const NS = 'github-issue-workflow'
+		const NS = 'tracker-issue-workflow'
 
 		/** English copy; the foundation other translations follow. */
 		const EN = {
@@ -149,12 +154,13 @@ window.__ModuleLoader__.load({
 		]
 
 		/**
-		 * One GitHub issue page: `https://github.com/<owner>/<repo>/issues/<n>`,
-		 * with an optional trailing path, query, or fragment. Pull requests and
-		 * every other host stay out so the menu never appears where these
-		 * commands do not fit.
+		 * The path of one issue page: `/<owner>/<repo>/issues/<n>`, with an
+		 * optional trailing path (the canonical URL drops it). GitHub, GitHub
+		 * Enterprise, Forgejo, and Gitea all serve this shape on their own
+		 * host, so the host cannot be checked against a fixed list. GitLab's
+		 * `/-/issues/` form has an extra segment and therefore stays out.
 		 */
-		const ISSUE_URL = /^(?:https?:)?\/\/(?:www\.)?github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/issues\/(\d+)(?:[/?#]\S*)?$/i
+		const ISSUE_PATH = /^\/([^/]+)\/([^/]+)\/issues\/(\d+)(?:\/.*)?$/
 
 		/**
 		 * Read one issue URL.
@@ -164,14 +170,24 @@ window.__ModuleLoader__.load({
 		 */
 		function issueFromUrl(url) {
 			if (typeof url !== 'string') return undefined
-			const match = ISSUE_URL.exec(url.trim())
+			const trimmed = url.trim()
+			const absolute = trimmed.startsWith('//') ? `https:${trimmed}` : trimmed
+			let parsed
+			try {
+				parsed = new URL(absolute)
+			} catch {
+				return undefined
+			}
+			if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return undefined
+			const match = ISSUE_PATH.exec(parsed.pathname)
 			if (match === null) return undefined
 			const [, owner, repo, number] = match
+			const host = parsed.host.replace(/^www\./i, '')
 			return {
 				owner,
 				repo,
 				number: Number(number),
-				url: `https://github.com/${owner}/${repo}/issues/${number}`,
+				url: `${parsed.protocol}//${host}/${owner}/${repo}/issues/${number}`,
 			}
 		}
 
@@ -246,9 +262,9 @@ window.__ModuleLoader__.load({
 				await scoped.conversation.send(text)
 			} else if (binding !== undefined) {
 				const result = await binding.session.prompt([{ type: 'text', text }], 'queue')
-				if (!result.ok) throw new Error('github-issue-workflow: the prompt was rejected')
+				if (!result.ok) throw new Error('tracker-issue-workflow: the prompt was rejected')
 			} else {
-				throw new Error('github-issue-workflow: the session cannot receive a message')
+				throw new Error('tracker-issue-workflow: the session cannot receive a message')
 			}
 			return queued
 		}
@@ -297,13 +313,13 @@ window.__ModuleLoader__.load({
 			const scope = ctx.sessions.scope(target)
 			const conversation = scope?.get('conversation')
 			if (binding === undefined || scope === undefined || conversation === undefined) {
-				throw new Error('github-issue-workflow: the new session has no composer yet')
+				throw new Error('tracker-issue-workflow: the new session has no composer yet')
 			}
 			const prepared = conversation.input.requestDraftInitialization(binding, {
 				prompt: commandLine(command, issue),
 				whenDraftExists: 'append',
 			})
-			if (prepared !== 'applied') throw new Error(`github-issue-workflow: the composer ${prepared} the command`)
+			if (prepared !== 'applied') throw new Error(`tracker-issue-workflow: the composer ${prepared} the command`)
 			conversation.input.for(scope).submit()
 			ctx.contextMenus.notify(t('notice.started', { command: `/${command}` }), true)
 		}
@@ -346,12 +362,12 @@ window.__ModuleLoader__.load({
 			apply(ctx) {
 				ctx.effect(
 					() => ctx.locale.register(NS, { en: EN, zh: ZH, ja: JA, es: ES, fr: FR, de: DE, ru: RU, pt: PT }),
-					'github issue workflow: locale',
+					'tracker issue workflow: locale',
 				)
 				const t = ctx.locale.bind(NS)
 
 				ctx.effect(() => ctx.contextMenus.register({
-					id: 'github-issue-workflow.issue',
+					id: 'tracker-issue-workflow.issue',
 					target: 'url',
 					order: 300,
 					observe: () => [ctx.locale],
@@ -385,7 +401,7 @@ window.__ModuleLoader__.load({
 							],
 						}))
 					},
-				}), 'github issue workflow: issue link menu')
+				}), 'tracker issue workflow: issue link menu')
 			},
 		}
 	},

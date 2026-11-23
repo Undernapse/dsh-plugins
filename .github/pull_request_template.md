@@ -8,7 +8,7 @@
 
 ## Plugins affected
 
-- [ ] `dsh-github-issue-workflow`
+- [ ] `dsh-tracker-issue-workflow`
 - [ ] `dsh-web-search-searxng`
 
 ## Checks
