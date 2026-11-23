@@ -1,0 +1,46 @@
+{
+  "name": "@undernapse/dsh-web-search-searxng",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SearXNG-backed web search provider for the DeepSeek Harness web capability seam",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Undernapse/dsh-plugins.git",
+    "directory": "dsh-web-search-searxng"
+  },
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./client": "./client.js"
+  },
+  "files": [
+    "index.js",
+    "lib/searxng.js",
+    "lib/redirect.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-tool",
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  },
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "license": "MIT"
+}

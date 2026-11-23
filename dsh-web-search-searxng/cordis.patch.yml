@@ -1,0 +1,28 @@
+# The SearXNG bundle patch. The first entry pins the web seam to the provider
+# this bundle registers. An override replaces the row's complete config, so the
+# base composition's Direct fetch choice is repeated here; without it, fetch
+# would become ambiguous between the registered fetch providers.
+- id: web
+  name: '@deepseek-ai/dsh-web'
+  config:
+    fetchProvider: http
+    searchProvider: searxng
+
+# The provider row. The endpoint below is reachable from the deployment; point
+# baseURL at another SearXNG instance to change it. Other accepted keys:
+#   categories: general        # comma-separated SearXNG categories
+#   language: auto             # "auto", "all", or a language code
+#   safesearch: 0              # 0, 1, or 2
+#   timeRange: month           # day, week, month, or year; unset by default
+#   engines: google,bing       # comma-separated engine names; instance default when unset
+#   timeoutMs: 20000
+#   userAgent: dsh-web-search-searxng/0.1.0
+- insert:
+    - id: web-search-searxng
+      name: '@undernapse/dsh-web-search-searxng'
+      config:
+        baseURL: https://searxng.in.undernapse.com
+        categories: general
+        language: auto
+        safesearch: 0
+        timeoutMs: 20000
