@@ -8,8 +8,8 @@ Undernapse. Each subdirectory is a self-contained plugin package with its own
 
 | Plugin | What it does |
 | --- | --- |
-| [`dsh-image-budget`](dsh-image-budget/README.md) | Keeps every model request within the image limit its provider route states, replacing the oldest images with durable references instead of sending them. |
 | [`dsh-github-issue-workflow`](dsh-github-issue-workflow/README.md) | Right-click a GitHub issue link to start `/ugo`, `/ufast`, or `/uloop` on it, in a new session or the current one. |
+| [`dsh-web-search-searxng`](dsh-web-search-searxng/README.md) | Searches the web through a SearXNG instance, and shows the sites each search cited in Chat. |
 
 ## Install a plugin
 
@@ -18,7 +18,7 @@ Clone the repository, then add the plugin package directory to a profile:
 ```sh
 git clone https://github.com/Undernapse/dsh-plugins.git
 cd dsh-plugins
-dsh plugin --profile <profile> add file:"$PWD/dsh-image-budget"
+dsh plugin --profile <profile> add file:"$PWD/dsh-web-search-searxng"
 ```
 
 The bundle patch in each package inserts its own row into the profile, so the
@@ -30,7 +30,7 @@ plugin can also be installed as a bundle through the plugin manager
 Each package runs its own suite with Node's built-in test runner:
 
 ```sh
-cd dsh-image-budget && node --test test/
+cd dsh-web-search-searxng && node --test test/
 ```
 
 ## Contributing
@@ -40,7 +40,7 @@ lands through a pull request. See [CONTRIBUTING.md](CONTRIBUTING.md), or let the
 helper run the loop:
 
 ```sh
-scripts/pr.sh "Add locale strings for image-budget"
+scripts/pr.sh "Add locale strings for web search"
 ```
 
 ## License
