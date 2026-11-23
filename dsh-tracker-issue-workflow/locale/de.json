@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Issue-Workflow",
+    "description": "Rechtsklick auf einen Issue-Link von GitHub, Forgejo, Gitea oder GitHub Enterprise, um /ugo, /ufast oder /uloop darauf auszuführen. Eine neue Sitzung öffnet sich und startet den Befehl, oder öffnet sich mit ungesendetem Befehl zur Prüfung; das Senden an diese Sitzung reiht den Befehl sofort ein."
+  }
+}

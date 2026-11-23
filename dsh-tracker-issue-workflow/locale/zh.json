@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "议题工作流",
+    "description": "右键点击 GitHub、Forgejo、Gitea 或 GitHub Enterprise 的议题链接，对该议题运行 /ugo、/ufast 或 /uloop。选择新会话会立即打开会话并运行命令，也可以只把命令填入输入框而不发送；选择当前会话会立即把命令加入队列。"
+  }
+}

@@ -1,12 +1,12 @@
 {
-  "name": "@undernapse/dsh-github-issue-workflow",
-  "version": "0.2.1",
+  "name": "@undernapse/dsh-tracker-issue-workflow",
+  "version": "0.3.0",
   "private": true,
-  "description": "Starts an uworkflow command from a GitHub issue link's right-click menu, in a new session that runs it or the current one",
+  "description": "Starts an uworkflow command from a GitHub, Forgejo, Gitea, or GitHub Enterprise issue link's right-click menu, in a new session that runs it or the current one",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Undernapse/dsh-plugins.git",
-    "directory": "dsh-github-issue-workflow"
+    "directory": "dsh-tracker-issue-workflow"
   },
   "type": "module",
   "main": "index.js",

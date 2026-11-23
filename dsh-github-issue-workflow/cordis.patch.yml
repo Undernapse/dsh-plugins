@@ -1,6 +1,0 @@
-# One row: the bundle's Client half adds the issue-link menu in the Web page.
-# The commands it offers are listed in `client.js`, because the menu runs in the
-# browser and reads no Host configuration.
-- insert:
-    - id: github-issue-workflow
-      name: '@undernapse/dsh-github-issue-workflow'

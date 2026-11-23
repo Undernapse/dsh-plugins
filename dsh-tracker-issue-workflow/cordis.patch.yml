@@ -1,0 +1,7 @@
+# One row: the bundle's Client half adds the issue-link menu in the Web page.
+# The commands it offers are listed in `client.js`, because the menu runs in the
+# browser and reads no Host configuration. Which hosts count as a tracker is
+# decided there too, from the link alone, so no instance URL is configured here.
+- insert:
+    - id: tracker-issue-workflow
+      name: '@undernapse/dsh-tracker-issue-workflow'

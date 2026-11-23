@@ -16,8 +16,9 @@ globalThis.window = {
 
 await import('../client.js');
 
-const PLUGIN_ID = '@undernapse/dsh-github-issue-workflow';
+const PLUGIN_ID = '@undernapse/dsh-tracker-issue-workflow';
 const ISSUE = 'https://github.com/acme/widgets/issues/12';
+const FORGEJO_ISSUE = 'https://git.example.org/acme/widgets/issues/12';
 
 /**
  * Minimal stand-in for the Client context: the two Session delivery paths, the
@@ -190,17 +191,52 @@ test('the menu offers three commands with three destinations each', () => {
 	assert.equal(actions[1].separatorBefore, false);
 });
 
-test('only GitHub issue links get the menu', () => {
+test('issue links from every supported tracker get the menu', () => {
 	const { contribution } = mount();
 	const resolve = url => contribution.resolve({ sessionId: 's1', url });
-	assert.equal(resolve('https://github.com/acme/widgets/issues/12').length, 3);
-	assert.equal(resolve('http://github.com/acme/widgets/issues/7/').length, 3);
-	assert.equal(resolve('https://www.github.com/acme/widgets/issues/7?notification=1').length, 3);
-	assert.equal(resolve('https://github.com/acme/widgets/issues/12/files').length, 3);
-	assert.equal(resolve('https://github.com/acme/widgets/pull/12').length, 0);
-	assert.equal(resolve('https://github.com/acme/widgets/issues').length, 0);
-	assert.equal(resolve('https://gitlab.com/acme/widgets/issues/12').length, 0);
-	assert.equal(resolve(undefined).length, 0);
+	const tracked = [
+		ISSUE,
+		FORGEJO_ISSUE,
+		'http://github.com/acme/widgets/issues/7/',
+		'https://www.github.com/acme/widgets/issues/7?notification=1',
+		'https://github.com/acme/widgets/issues/12/files',
+		'https://github.enterprise.example/acme/widgets/issues/4',
+		'https://git.example.org:3000/acme/widgets/issues/9#issuecomment-1',
+		'https://codeberg.org/forgejo/forgejo/issues/1234',
+	];
+	for (const url of tracked) assert.equal(resolve(url).length, 3, url);
+});
+
+test('pull requests, GitLab issues, and lookalike pages get no menu', () => {
+	const { contribution } = mount();
+	const resolve = url => contribution.resolve({ sessionId: 's1', url });
+	const ignored = [
+		'https://github.com/acme/widgets/pull/12',
+		'https://codeberg.org/forgejo/forgejo/pulls/1234',
+		'https://github.com/acme/widgets/issues',
+		'https://gitlab.com/acme/widgets/-/issues/12',
+		'https://gitlab.com/group/sub/project/-/issues/12',
+		'https://redmine.example.org/issues/12',
+		'https://git.example.org/forgejo/acme/widgets/issues/3',
+		'mailto:dev@example.org',
+		undefined,
+	];
+	for (const url of ignored) assert.equal(resolve(url).length, 0, String(url));
+});
+
+test('the command line keeps the clicked host, scheme, and port', () => {
+	const { contribution, started } = mount();
+	const forgejo = contribution.resolve({
+		sessionId: 's1',
+		url: 'https://git.example.org:3000/acme/widgets/issues/9#issuecomment-1',
+	})[2];
+	forgejo.children[1].run();
+	const plain = contribution.resolve({ sessionId: 's1', url: 'http://forgejo.example.org/acme/widgets/issues/5' })[0];
+	plain.children[1].run();
+	assert.deepEqual(started.map(entry => entry.options.prompt), [
+		'/uloop https://git.example.org:3000/acme/widgets/issues/9',
+		'/ugo http://forgejo.example.org/acme/widgets/issues/5',
+	]);
 });
 
 test('a new session opens with the canonical command in its composer, unsent', () => {

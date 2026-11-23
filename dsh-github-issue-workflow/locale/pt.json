@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Fluxo de trabalho de issues do GitHub",
-    "description": "Clique com o botão direito num link de issue do GitHub para executar /ugo, /ufast ou /uloop nela. Uma sessão nova abre e executa o comando, ou abre com o comando por enviar para revisão; enviar para esta sessão coloca o comando na fila imediatamente."
-  }
-}

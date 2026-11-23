@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Flujo de trabajo de incidencias",
+    "description": "Haz clic derecho en un enlace de incidencia de GitHub, Forgejo, Gitea o GitHub Enterprise para ejecutar /ugo, /ufast o /uloop sobre ella. Se abre una sesión nueva que inicia el comando, o que queda con el comando sin enviar para revisarlo; enviarlo a esta sesión lo pone en cola de inmediato."
+  }
+}
