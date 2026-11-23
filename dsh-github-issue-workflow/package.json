@@ -1,8 +1,8 @@
 {
   "name": "@undernapse/dsh-github-issue-workflow",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Starts an uworkflow command from a GitHub issue link's right-click menu, in a new session or the current one",
+  "description": "Starts an uworkflow command from a GitHub issue link's right-click menu, in a new session that runs it or the current one",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Undernapse/dsh-plugins.git",
@@ -38,7 +38,8 @@
         "@deepseek-ai/dsh-client-ui-context-menu",
         "@deepseek-ai/dsh-client-ui-conversation",
         "@deepseek-ai/dsh-client-ui-workspace",
-        "@deepseek-ai/dsh-api-session-controller"
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-api-workspace-controller"
       ]
     }
   },

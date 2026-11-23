@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Flux de travail des issues GitHub",
-    "description": "Faites un clic droit sur un lien d’issue GitHub pour y lancer /ugo, /ufast ou /uloop. Une nouvelle session s’ouvre avec la commande saisie dans le composeur, non envoyée ; l’envoi vers cette session la met immédiatement en file d’attente."
+    "description": "Faites un clic droit sur un lien d’issue GitHub pour y lancer /ugo, /ufast ou /uloop. Une nouvelle session s’ouvre et exécute la commande, ou s’ouvre avec la commande non envoyée pour la relire ; l’envoi vers cette session la met immédiatement en file d’attente."
   }
 }

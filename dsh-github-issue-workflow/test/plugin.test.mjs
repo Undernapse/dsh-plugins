@@ -21,14 +21,16 @@ const ISSUE = 'https://github.com/acme/widgets/issues/12';
 
 /**
  * Minimal stand-in for the Client context: the two Session delivery paths, the
- * Workspace navigation call, menu registration, and locale dictionaries.
- * @param {{locale?: string, scope?: boolean, binding?: boolean, running?: boolean}} [options]
- *   which paths answer, and whether the session is mid-turn.
+ * Workspace navigation calls, menu registration, and locale dictionaries.
+ * @param {{locale?: string, scope?: boolean, binding?: boolean, running?: boolean, workspace?: boolean}} [options]
+ *   which paths answer, whether the session is mid-turn, and whether a Workspace exists.
  */
-function createContext({ locale = 'en', scope = true, binding = true, running = false } = {}) {
+function createContext({ locale = 'en', scope = true, binding = true, running = false, workspace = true } = {}) {
 	const contributions = [];
 	const notices = [];
 	const started = [];
+	const connected = [];
+	const opened = [];
 	const sent = [];
 	const prompts = [];
 	const dictionaries = new Map();
@@ -59,6 +61,16 @@ function createContext({ locale = 'en', scope = true, binding = true, running = 
 			},
 		},
 		sessions: {
+			list: {
+				getSnapshot() {
+					return {
+						byId: {
+							s1: { id: 's1', blank: false, updatedAt: 30, cwd: '/work/acme' },
+							s9: { id: 's9', blank: false, updatedAt: 20, cwd: '/work/acme' },
+						},
+					};
+				},
+			},
 			scope(sessionId) {
 				if (!scope) return undefined;
 				return {
@@ -84,13 +96,33 @@ function createContext({ locale = 'en', scope = true, binding = true, running = 
 				};
 			},
 		},
+		workspaces: {
+			list: {
+				getSnapshot() {
+					return {
+						items: workspace ? [{
+							workspaceId: 'w1',
+							sessionIds: ['s1', 's9'],
+							createdAt: '2026-01-01T00:00:00.000Z',
+						}] : [],
+					};
+				},
+			},
+		},
 		uiWorkspace: {
 			startSession(workspaceId, options) {
 				started.push({ workspaceId, options });
 			},
+			async connectWorkspace(workspaceId) {
+				connected.push(workspaceId);
+				return 'new1';
+			},
+			openSession(sessionId) {
+				opened.push(sessionId);
+			},
 		},
 	};
-	return { ctx, contributions, notices, started, sent, prompts };
+	return { ctx, contributions, notices, started, connected, opened, sent, prompts };
 }
 
 /**
@@ -115,22 +147,23 @@ test('the bundle registers one client plugin', () => {
 	assert.equal(registration.id, PLUGIN_ID);
 	const exported = plugin();
 	assert.equal(typeof exported.apply, 'function');
-	assert.deepEqual(exported.inject, ['contextMenus', 'sessions', 'uiWorkspace', 'locale']);
+	assert.deepEqual(exported.inject, ['contextMenus', 'sessions', 'uiWorkspace', 'workspaces', 'locale']);
 });
 
-test('the menu offers three commands with two destinations each', () => {
+test('the menu offers three commands with three destinations each', () => {
 	const { contribution } = mount();
 	const actions = contribution.resolve({ sessionId: 's1', url: ISSUE });
 	assert.equal(actions.length, 3);
 	assert.deepEqual(actions.map(action => action.id), ['ugo', 'ufast', 'uloop']);
 	for (const action of actions) {
-		assert.deepEqual(action.children.map(child => child.id), [`${action.id}:new`, `${action.id}:current`]);
+		assert.deepEqual(action.children.map(child => child.id), [`${action.id}:run`, `${action.id}:new`, `${action.id}:current`]);
 	}
 	assert.equal(actions[0].label, 'Route this issue (/ugo)');
 	assert.equal(actions[1].label, 'Small change (/ufast)');
 	assert.equal(actions[2].label, 'Deliver autonomously (/uloop)');
-	assert.equal(actions[0].children[0].label, 'Open a new session (not sent)');
-	assert.equal(actions[0].children[1].label, 'Send to this session now');
+	assert.equal(actions[0].children[0].label, 'Open a new session and run');
+	assert.equal(actions[0].children[1].label, 'Open a new session (not sent)');
+	assert.equal(actions[0].children[2].label, 'Send to this session now');
 	assert.equal(actions[0].separatorBefore, true);
 	assert.equal(actions[1].separatorBefore, false);
 });
@@ -154,7 +187,7 @@ test('a new session opens with the canonical command in its composer, unsent', (
 		sessionId: 's1',
 		url: 'https://github.com/acme/widgets/issues/12#issuecomment-3456',
 	})[2];
-	action.children[0].run();
+	action.children[1].run();
 	assert.deepEqual(started, [{
 		workspaceId: undefined,
 		options: { prompt: '/uloop https://github.com/acme/widgets/issues/12', whenDraftExists: 'append' },
@@ -163,10 +196,37 @@ test('a new session opens with the canonical command in its composer, unsent', (
 	assert.deepEqual(notices, []);
 });
 
+test('a new session opens in the clicked session’s workspace and runs the command at once', async () => {
+	const { contribution, connected, opened, started, sent, notices } = mount();
+	const action = contribution.resolve({
+		sessionId: 's9',
+		url: 'https://github.com/acme/widgets/issues/12#issuecomment-3456',
+	})[1];
+	await action.children[0].run();
+	assert.deepEqual(connected, ['w1']);
+	assert.deepEqual(opened, ['new1']);
+	assert.deepEqual(started, []);
+	assert.deepEqual(sent, [{ sessionId: 'new1', text: '/ufast https://github.com/acme/widgets/issues/12' }]);
+	assert.deepEqual(notices, [{ text: 'Started /ufast in a new session', success: true }]);
+});
+
+test('with no Workspace yet the run destination falls back to the unsent draft', async () => {
+	const { contribution, connected, opened, started, notices } = mount({ workspace: false });
+	const action = contribution.resolve({ sessionId: 's1', url: ISSUE })[1];
+	await action.children[0].run();
+	assert.deepEqual(connected, []);
+	assert.deepEqual(opened, []);
+	assert.deepEqual(started, [{
+		workspaceId: undefined,
+		options: { prompt: `/ufast ${ISSUE}`, whenDraftExists: 'append' },
+	}]);
+	assert.deepEqual(notices, []);
+});
+
 test('the current session receives the command through the conversation service', async () => {
 	const { contribution, sent, prompts, notices } = mount();
 	const action = contribution.resolve({ sessionId: 's9', url: ISSUE })[1];
-	await action.children[1].run();
+	await action.children[2].run();
 	assert.deepEqual(sent, [{ sessionId: 's9', text: `/ufast ${ISSUE}` }]);
 	assert.deepEqual(prompts, []);
 	assert.deepEqual(notices, [{ text: 'Sent /ufast to this session', success: true }]);
@@ -175,14 +235,14 @@ test('the current session receives the command through the conversation service'
 test('a running session is told the command is queued', async () => {
 	const { contribution, notices } = mount({ running: true });
 	const action = contribution.resolve({ sessionId: 's9', url: ISSUE })[1];
-	await action.children[1].run();
+	await action.children[2].run();
 	assert.deepEqual(notices, [{ text: 'Queued /ufast behind the current turn', success: true }]);
 });
 
 test('the session binding carries the command when no Client scope is live', async () => {
 	const { contribution, sent, prompts } = mount({ scope: false });
 	const action = contribution.resolve({ sessionId: 's9', url: ISSUE })[0];
-	await action.children[1].run();
+	await action.children[2].run();
 	assert.deepEqual(sent, []);
 	assert.deepEqual(prompts, [{
 		sessionId: 's9',
@@ -196,15 +256,16 @@ test('a session that can no longer receive a message is not offered', async () =
 	const actions = contribution.resolve({ sessionId: 's9', url: ISSUE });
 	assert.equal(actions.length, 3);
 	for (const action of actions) {
-		assert.deepEqual(action.children.map(child => child.id), [`${action.id}:new`]);
+		assert.deepEqual(action.children.map(child => child.id), [`${action.id}:run`, `${action.id}:new`]);
 	}
 });
 
 test('labels follow the active locale', () => {
 	const chinese = mount({ locale: 'zh' }).contribution.resolve({ sessionId: 's1', url: ISSUE });
 	assert.equal(chinese[2].label, '自主交付（/uloop）');
-	assert.equal(chinese[2].children[0].label, '在新会话中打开（不发送）');
-	assert.equal(chinese[2].children[1].label, '立即发送到当前会话');
+	assert.equal(chinese[2].children[0].label, '在新会话中打开并运行');
+	assert.equal(chinese[2].children[1].label, '在新会话中打开（不发送）');
+	assert.equal(chinese[2].children[2].label, '立即发送到当前会话');
 	const japanese = mount({ locale: 'ja' }).contribution.resolve({ sessionId: 's1', url: ISSUE });
 	assert.equal(japanese[0].label, 'このイシューを振り分ける（/ugo）');
 });

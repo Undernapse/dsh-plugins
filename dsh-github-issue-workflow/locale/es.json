@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Flujo de trabajo de incidencias de GitHub",
-    "description": "Haz clic derecho en un enlace a una incidencia de GitHub para ejecutar /ugo, /ufast o /uloop sobre ella. Una sesión nueva se abre con el comando escrito en el compositor y sin enviar; enviarlo a esta sesión lo pone en cola de inmediato."
+    "description": "Haz clic derecho en un enlace a una incidencia de GitHub para ejecutar /ugo, /ufast o /uloop sobre ella. Una sesión nueva se abre y ejecuta el comando, o se abre con el comando sin enviar para revisarlo; enviarlo a esta sesión lo pone en cola de inmediato."
   }
 }

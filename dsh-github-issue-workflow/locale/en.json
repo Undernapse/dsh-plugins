@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "GitHub issue workflow",
-    "description": "Right-click a GitHub issue link to run /ugo, /ufast, or /uloop on it. A new session opens with the command typed in its composer and not yet sent; sending to this session queues the command immediately."
+    "description": "Right-click a GitHub issue link to run /ugo, /ufast, or /uloop on it. A new session opens and starts the command, or opens with the command unsent for review; sending to this session queues the command immediately."
   }
 }
