@@ -235,9 +235,15 @@ test('the command line keeps the clicked host, scheme, and port', () => {
 	forgejo.children[1].run();
 	const plain = contribution.resolve({ sessionId: 's1', url: 'http://forgejo.example.org/acme/widgets/issues/5' })[0];
 	plain.children[1].run();
+	const relative = contribution.resolve({ sessionId: 's1', url: '//git.example.org/acme/widgets/issues/9' })[0];
+	relative.children[1].run();
+	const encoded = contribution.resolve({ sessionId: 's1', url: 'https://git.example.org/a%20b/c/issues/1' })[0];
+	encoded.children[1].run();
 	assert.deepEqual(started.map(entry => entry.options.prompt), [
 		'/uloop https://git.example.org:3000/acme/widgets/issues/9',
 		'/ugo http://forgejo.example.org/acme/widgets/issues/5',
+		'/ugo https://git.example.org/acme/widgets/issues/9',
+		'/ugo https://git.example.org/a%20b/c/issues/1',
 	]);
 });
 
