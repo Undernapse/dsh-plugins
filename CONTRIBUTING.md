@@ -27,7 +27,7 @@ Or let [`scripts/pr.sh`](scripts/pr.sh) run the whole loop from a clean `main`
 checkout:
 
 ```sh
-scripts/pr.sh "Add locale strings for image-budget"
+scripts/pr.sh "Add locale strings for web search"
 ```
 
 It refuses to run outside `main` or without changes, uses the commit message's

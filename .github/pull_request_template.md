@@ -8,7 +8,8 @@
 
 ## Plugins affected
 
-- [ ] `dsh-image-budget`
+- [ ] `dsh-github-issue-workflow`
+- [ ] `dsh-web-search-searxng`
 
 ## Checks
 

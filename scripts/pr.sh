@@ -39,7 +39,7 @@ Options:
   -h, --help            Show this help
 
 Examples:
-  scripts/pr.sh "Add locale strings for image-budget"
+  scripts/pr.sh "Add locale strings for web search"
   scripts/pr.sh -d -b fix/limits "Guard against an empty limit"
 EOF
 }
