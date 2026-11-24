@@ -1,8 +1,8 @@
 {
   "name": "@undernapse/dsh-request-resume",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Resumes interrupted turns in the same turn: re-sends a failed model request after a backoff once the provider's own retry budget is spent",
+  "description": "Watches model routes and continues every conversation stuck on one: one availability probe per provider and model, then Continue for all of them",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Undernapse/dsh-plugins.git",
@@ -15,13 +15,13 @@
   },
   "exports": {
     ".": "./index.js",
-    "./lib/policy.js": "./lib/policy.js",
+    "./lib/watch.js": "./lib/watch.js",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },
   "files": [
     "index.js",
-    "lib/policy.js",
+    "lib/watch.js",
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",

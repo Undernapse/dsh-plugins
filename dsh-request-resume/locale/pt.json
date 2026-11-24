@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Retomada de requisições",
-    "description": "Retoma um turno interrompido no mesmo turno: quando uma requisição ao modelo falha por tempo esgotado, limite de taxa, servidor ou transporte e o provedor já gastou as próprias tentativas, o plugin espera e reenvia a requisição para que o turno termine em vez de encerrar com “Este turno falhou”. Cancelar o turno encerra a espera, e os limites por etapa e por turno impedem que um turno que falha sem parar fique tentando para sempre."
+    "description": "Monitora cada rota de modelo em vez de cada turno: quando turnos falham em um provedor e modelo por tempo esgotado, limite de taxa, servidor ou transporte, o plugin envia uma pequena sonda a essa rota até que ela responda e então envia «Continuar» a todas as conversas presas nela, inclusive as que ficaram falhas em uma execução anterior. Se você cancelar ou continuar uma conversa, ela sai da lista, e os limites de sondas evitam repetir para sempre uma rota fora do ar."
   }
 }

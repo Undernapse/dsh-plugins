@@ -1,14 +1,14 @@
-# One row: the plugin resumes a turn whose model request failed, in the same
-# turn, after the provider adapter's own retry policy has given up. Every
+# One row: the plugin watches a model route whose turns failed, probes it until
+# it answers, then continues every conversation stuck on that route. Every
 # setting lives on this row because a profile patch that names this id replaces
 # the whole `config` map, never merges into it.
 - insert:
     - id: request-resume
       name: '@undernapse/dsh-request-resume'
       config:
-        # Failure codes worth another request. All are transient by nature; a
-        # permanent failure (bad credentials, invalid request, context window)
-        # is deliberately absent, because another attempt cannot fix it.
+        # Failures that leave a conversation worth continuing. These are the
+        # codes the Harness itself offers Continue for; a wider list would only
+        # produce resumes its continuation check rejects.
         resumeCodes:
           - TIMEOUT
           - TRANSPORT
@@ -16,21 +16,26 @@
           - RATE_LIMIT
           - STREAM_CLOSED
           - EMPTY_RESPONSE
-          - MALFORMED_RESPONSE
-        # Requests this plugin may re-send inside one step. The provider
-        # adapter's own budget (for example seven retries) runs first, so this
-        # counts only the attempts after that budget is spent.
-        maxResumes: 3
-        # Wait before the first resumed request, doubling up to the cap.
-        initialDelayMs: 2000
-        maxDelayMs: 60000
-        # A provider `Retry-After` longer than this is ignored in favor of the
-        # local backoff, so one instruction cannot stall the turn indefinitely.
-        maxProviderDelayMs: 300000
-        # Stop resuming a step that has been failing for longer than this.
-        # 0 disables the window.
-        maxStepDurationMs: 600000
-        # The same three limits applied across a whole agent turn, so a turn
-        # that keeps failing in later steps cannot run forever. Same units.
-        maxResumesPerTurn: 6
-        maxTurnDurationMs: 1800000
+        # Wait before the first probe of a route, doubling up to the cap. A
+        # route that recovers quickly is picked up quickly; a long outage costs
+        # at most one request per maxProbeDelayMs.
+        initialProbeDelayMs: 5000
+        maxProbeDelayMs: 300000
+        # Stop watching a route once it has survived this long or this many
+        # probes. Its conversations keep their failed turn, as without the
+        # plugin. 0 disables the time window.
+        maxProbeWaitMs: 7200000
+        maxProbes: 60
+        # One probe request: its timeout, text, and output-token ceiling. The
+        # probe is a real request, so it proves the route works, but it is tiny.
+        probeTimeoutMs: 30000
+        probeText: ping
+        probeMaxTokens: 1
+        # Spacing between the Continues sent after a route recovers, so a
+        # backlog does not arrive as one burst.
+        resumeIntervalMs: 1000
+        # Look for conversations left failed by an earlier run: a swap sweep at
+        # startup over the last `sweepDays`, at most `sweepMaxSessions` logs.
+        sweepOnStart: true
+        sweepDays: 3
+        sweepMaxSessions: 200

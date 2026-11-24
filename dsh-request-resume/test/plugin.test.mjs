@@ -3,30 +3,44 @@ import { test } from 'node:test';
 
 import { apply } from '../index.js';
 
-/**
- * Stand-in for the parts of the Client context the plugin touches: event
- * registration, effects, the live-agent registry, the logger, and a session
- * that records what the plugin appends.
- * @param {{failure?: object, downstream?: object, live?: boolean, appendError?: Error}} [options]
- *   the failure the waterfall reports, what a downstream listener decides,
- *   whether the agent stays live, and whether the log refuses an append.
- */
-function createContext({ failure = { code: 'TIMEOUT', message: 'Request timed out.' }, downstream, live = true, appendError } = {}) {
-	const listeners = new Map();
-	const disposers = [];
-	const logs = [];
-	const appended = [];
-	const agent = {
-		id: 'session-1',
-		session: {
-			append(type, data) {
-				if (appendError !== undefined) throw appendError;
-				appended.push({ type, data });
+/** Wait until a predicate holds, so timers settle without fixed sleeps. */
+async function until(predicate, label = 'condition', timeoutMs = 2000) {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		if (predicate()) return;
+		await new Promise(resolve => { setTimeout(resolve, 5); });
+	}
+	throw new Error(`timed out waiting for ${label}`);
+}
+
+/** One outcome of a probe: a successful stream ending in `stop`, or a failure code. */
+function streamOf(outcome) {
+	return {
+		async *[Symbol.asyncIterator]() {
+			if (outcome === 'ok') {
+				yield { type: 'finish', reason: { kind: 'stop' } };
+				return;
 			}
+			yield { type: 'finish', reason: { kind: 'error', failure: { code: outcome, message: outcome } } };
 		}
 	};
+}
+
+/**
+ * Stand-in for the Client context: the event feed, the model route, the
+ * Session controller, effects, optional injection, and the logger.
+ * @param {{probe?: (call: number) => string, prompt?: (request: object) => void, sessions?: object[]}} [options]
+ *   what each probe returns, what the controller does, and what the sweep lists.
+ */
+function createContext({ probe, prompt, sessions = [] } = {}) {
+	const listeners = new Map();
+	const logs = [];
+	const probes = [];
+	const prompts = [];
+	const disposers = [];
+	const injected = new Map();
+	let calls = 0;
 	const ctx = {
-		dshPlugin: {},
 		effect(run) {
 			const dispose = run();
 			if (typeof dispose === 'function') disposers.push(dispose);
@@ -36,177 +50,310 @@ function createContext({ failure = { code: 'TIMEOUT', message: 'Request timed ou
 			listeners.set(event, listener);
 			return () => { listeners.delete(event); };
 		},
-		agents: {
-			get(id) {
-				return live && id === agent.id ? agent : undefined;
-			}
+		inject(deps, callback) {
+			injected.set(deps.join(','), callback);
 		},
 		logger: {
-			info: message => { logs.push(['info', message]); },
-			warn: message => { logs.push(['warn', message]); }
+			info: message => { logs.push(message); },
+			warn: message => { logs.push(message); }
+		},
+		llm: {
+			stream(options) {
+				probes.push(options);
+				const outcome = probe === undefined ? 'ok' : probe(calls);
+				calls += 1;
+				return streamOf(outcome);
+			}
+		},
+		sessionController: {
+			async prompt(request) {
+				prompts.push(request);
+				if (prompt !== undefined) return prompt(request);
+				return { accepted: true };
+			}
+		},
+		sweepSessions: sessions
+	};
+	return { ctx, listeners, logs, probes, prompts, disposers, injected };
+}
+
+/** Report one turn ending exactly as the Session feed does. */
+function turnEnd(state, { sessionId = 's1', provider = 'apisix', model = 'auto', code, seq = 10 }) {
+	const session = { id: sessionId, requestHeader: () => ({ config: { provider, model } }) };
+	const reason = code === undefined ? { kind: 'completed' } : { kind: 'error', error: { code, message: code } };
+	state.listeners.get('session/event')(session, { type: 'turn/end', seq, data: { turn: 1, reason } });
+}
+
+const FAST = {
+	initialProbeDelayMs: 0,
+	maxProbeDelayMs: 1,
+	resumeIntervalMs: 0,
+	probeTimeoutMs: 1000,
+	sweepOnStart: false
+};
+
+test('the plugin declares the services it needs', async () => {
+	const module = await import('../index.js');
+	assert.equal(module.name, 'request-resume');
+	assert.deepEqual(module.inject, ['llm', 'sessionController', 'sessions']);
+});
+
+test('one failed turn is watched and continued once its route answers', async () => {
+	const state = createContext();
+	apply(state.ctx, FAST);
+	turnEnd(state, { code: 'SERVER' });
+	await until(() => state.prompts.length === 1, 'the continuation');
+	assert.equal(state.probes.length, 1);
+	assert.deepEqual(state.prompts[0].content, [], 'Continue sends an empty prompt');
+	assert.equal(state.prompts[0].mode, 'queue');
+	assert.equal(state.prompts[0].sessionId, 's1');
+	assert.equal(typeof state.prompts[0].requestId, 'string');
+	assert.match(state.logs.join('\n'), /answered again; continuing 1 conversation/);
+});
+
+test('the probe asks the exact provider and model with one token', async () => {
+	const state = createContext();
+	apply(state.ctx, FAST);
+	turnEnd(state, { provider: 'vllm-local', model: 'deepseek-v4.1-flash-1017', code: 'TIMEOUT' });
+	await until(() => state.probes.length === 1, 'the probe');
+	assert.equal(state.probes[0].provider, 'vllm-local');
+	assert.equal(state.probes[0].model, 'deepseek-v4.1-flash-1017');
+	assert.equal(state.probes[0].maxTokens, 1);
+	assert.equal(state.probes[0].messages.length, 1);
+	assert.equal(state.probes[0].signal instanceof AbortSignal, true);
+});
+
+test('many conversations on one route share a single probe', async () => {
+	let release;
+	const gate = new Promise(resolve => { release = resolve; });
+	const state = createContext({
+		probe: () => 'ok'
+	});
+	// Hold the first probe open so the second failure lands while it is running.
+	const originalStream = state.ctx.llm.stream;
+	state.ctx.llm.stream = (options) => {
+		state.probes.push(options);
+		return {
+			async *[Symbol.asyncIterator]() {
+				await gate;
+				yield { type: 'finish', reason: { kind: 'stop' } };
+			}
+		};
+	};
+	apply(state.ctx, FAST);
+	turnEnd(state, { sessionId: 'a', code: 'SERVER' });
+	turnEnd(state, { sessionId: 'b', code: 'TIMEOUT' });
+	turnEnd(state, { sessionId: 'c', code: 'TRANSPORT' });
+	await until(() => state.probes.length === 1, 'the single probe');
+	release();
+	await until(() => state.prompts.length === 3, 'all three continuations');
+	assert.equal(state.probes.length, 1, 'three stuck chats cost one probe');
+	assert.deepEqual(state.prompts.map(entry => entry.sessionId).sort(), ['a', 'b', 'c']);
+	assert.equal(state.ctx.llm.stream, state.ctx.llm.stream);
+	assert.ok(originalStream);
+});
+
+test('different routes are probed and continued independently', async () => {
+	const state = createContext({ probe: call => (call === 0 ? 'SERVER' : 'ok') });
+	apply(state.ctx, FAST);
+	turnEnd(state, { sessionId: 'a', provider: 'p1', model: 'm1', code: 'SERVER' });
+	turnEnd(state, { sessionId: 'b', provider: 'p2', model: 'm2', code: 'SERVER' });
+	await until(() => state.prompts.some(entry => entry.sessionId === 'b'), 'the healthy route continues');
+	// The route still down retries and follows once it recovers.
+	await until(() => state.prompts.some(entry => entry.sessionId === 'a'), 'the recovered route continues');
+	assert.deepEqual(state.prompts.map(entry => entry.sessionId).sort(), ['a', 'b']);
+	assert.ok(state.probes.length >= 2);
+});
+
+test('a probe that keeps failing backs off and tries again', async () => {
+	const state = createContext({ probe: call => (call < 2 ? 'TIMEOUT' : 'ok') });
+	apply(state.ctx, FAST);
+	turnEnd(state, { code: 'SERVER' });
+	await until(() => state.prompts.length === 1, 'the continuation after two failed probes');
+	assert.equal(state.probes.length, 3);
+	assert.match(state.logs.join('\n'), /still unavailable \(TIMEOUT\)/);
+});
+
+test('a probe failure that retrying cannot fix stops the watch at once', async () => {
+	const state = createContext({ probe: () => 'AUTH' });
+	apply(state.ctx, FAST);
+	turnEnd(state, { code: 'SERVER' });
+	await until(() => state.logs.some(line => line.includes('stopped watching')), 'the give-up');
+	assert.equal(state.probes.length, 1);
+	assert.deepEqual(state.prompts, []);
+	assert.match(state.logs.join('\n'), /AUTH cannot be fixed by retrying/);
+});
+
+test('watching stops at the probe limit and leaves the failed turn alone', async () => {
+	const state = createContext({ probe: () => 'SERVER' });
+	apply(state.ctx, { ...FAST, maxProbes: 2 });
+	turnEnd(state, { code: 'SERVER' });
+	await until(() => state.logs.some(line => line.includes('stopped watching')), 'the limit');
+	assert.equal(state.probes.length, 2);
+	assert.deepEqual(state.prompts, []);
+	assert.match(state.logs.join('\n'), /after 2 probes; 1 conversation\(s\) keep their failed turn/);
+});
+
+test('a later completed turn supersedes the failure', async () => {
+	const state = createContext();
+	apply(state.ctx, { ...FAST, initialProbeDelayMs: 50, maxProbeDelayMs: 50 });
+	turnEnd(state, { code: 'SERVER' });
+	// The user retried by hand and it worked.
+	turnEnd(state, { code: undefined });
+	await new Promise(resolve => { setTimeout(resolve, 120); });
+	assert.deepEqual(state.prompts, []);
+	// The route stopped being watched because nothing was waiting on it.
+	assert.equal(state.probes.length, 0);
+});
+
+test('permanent failures are never watched', async () => {
+	for (const code of ['AUTH', 'INVALID_REQUEST', 'CONTEXT_WINDOW_EXCEEDED', 'MALFORMED_RESPONSE']) {
+		const state = createContext();
+		apply(state.ctx, FAST);
+		turnEnd(state, { code });
+		await new Promise(resolve => { setTimeout(resolve, 30); });
+		assert.equal(state.probes.length, 0, code);
+		assert.deepEqual(state.prompts, [], code);
+	}
+});
+
+test('a controller that refuses the continuation is reported and the rest still run', async () => {
+	const state = createContext({
+		prompt: (request) => {
+			if (request.sessionId === 'a') throw new Error('generation continuation is unavailable');
+			return { accepted: true };
+		}
+	});
+	apply(state.ctx, FAST);
+	turnEnd(state, { sessionId: 'a', code: 'SERVER' });
+	turnEnd(state, { sessionId: 'b', code: 'SERVER' });
+	await until(() => state.prompts.length === 2, 'both attempts');
+	assert.match(state.logs.join('\n'), /did not continue a: generation continuation is unavailable/);
+	assert.match(state.logs.join('\n'), /continued b on apisix\/auto/);
+});
+
+test('a thrown probe is treated as unavailable and can recover', async () => {
+	let call = 0;
+	const state = createContext();
+	state.ctx.llm.stream = () => {
+		call += 1;
+		if (call === 1) {
+			return {
+				async *[Symbol.asyncIterator]() {
+					throw new Error('connection reset');
+				}
+			};
+		}
+		return streamOf('ok');
+	};
+	apply(state.ctx, FAST);
+	turnEnd(state, { code: 'TRANSPORT' });
+	await until(() => state.prompts.length === 1, 'the continuation');
+	assert.equal(call, 2);
+});
+
+test('unloading stops the timers and drops a probe in flight', async () => {
+	const state = createContext();
+	let aborted;
+	state.ctx.llm.stream = (options) => {
+		state.probes.push(options);
+		options.signal.addEventListener('abort', () => { aborted = true; });
+		return {
+			async *[Symbol.asyncIterator]() {
+				await new Promise(resolve => { setTimeout(resolve, 1000); });
+				yield { type: 'finish', reason: { kind: 'stop' } };
+			}
+		};
+	};
+	apply(state.ctx, { ...FAST, probeTimeoutMs: 5000 });
+	turnEnd(state, { code: 'SERVER' });
+	await until(() => state.probes.length === 1, 'the probe in flight');
+	for (const dispose of state.disposers) dispose();
+	await until(() => aborted === true, 'the probe was cancelled');
+	assert.deepEqual(state.prompts, []);
+});
+
+test('the startup sweep continues a conversation left failed by an earlier run', async () => {
+	const state = createContext();
+	apply(state.ctx, { ...FAST, sweepOnStart: true });
+	const sweep = state.injected.get('sessionQuery');
+	assert.ok(sweep, 'the sweep waits for the optional query service');
+	const query = {
+		async listSessions() {
+			return [
+				{ header: { id: 'old', createdAt: 1 } },
+				{ header: { id: 'child', createdAt: 1, origin: 'subagent' } }
+			];
+		},
+		async filterEvents(sessionId, filters) {
+			const type = filters[0].values[0];
+			if (sessionId === 'child') throw new Error('should not be read');
+			return type === 'turn/end' ? [{ seq: 12, time: Date.now() }] : [{ seq: 3, time: Date.now() }];
+		},
+		async readEvent({ seq }) {
+			return seq === 12
+				? { target: { data: { reason: { kind: 'error', error: { code: 'SERVER', message: 'down' } } } } }
+				: { target: { data: { header: { config: { provider: 'apisix', model: 'auto' } } } } };
 		}
 	};
-	return { ctx, agent, listeners, appended, logs, disposers };
-}
-
-/** The event payload the loop hands a waterfall listener. */
-function payload(agent, overrides = {}) {
-	return {
-		agent,
-		turn: 4,
-		step: 2,
-		provider: 'apisix',
-		failure: { code: 'TIMEOUT', message: 'Request timed out.' },
-		retryPolicy: undefined,
-		signal: new AbortController().signal,
-		...overrides
-	};
-}
-
-/** Run the plugin's listener the way the loop does: `next()` is the downstream policy. */
-async function fire(state, overrides = {}, next = async () => undefined) {
-	const listener = state.listeners.get('agent/request-error');
-	assert.ok(listener, 'the plugin registers an agent/request-error listener');
-	return listener(payload(state.agent, overrides), next);
-}
-
-const FAST = { initialDelayMs: 0, maxDelayMs: 0, maxProviderDelayMs: 0 };
-
-test('the plugin resumes a transient failure in the same turn', async () => {
-	const state = createContext();
-	apply(state.ctx, FAST);
-	assert.deepEqual(await fire(state), { kind: 'retry' });
+	sweep({ sessionQuery: query });
+	await until(() => state.prompts.length === 1, 'the swept continuation');
+	assert.equal(state.prompts[0].sessionId, 'old');
+	assert.equal(state.probes.length, 1);
 });
 
-test('every transient code is resumed', async () => {
-	for (const code of ['TIMEOUT', 'TRANSPORT', 'SERVER', 'RATE_LIMIT', 'STREAM_CLOSED', 'EMPTY_RESPONSE', 'MALFORMED_RESPONSE']) {
+test('the sweep ignores old failures, completed turns, and permanent codes', async () => {
+	const cases = [
+		{ time: Date.now() - 10 * 86400000, reason: { kind: 'error', error: { code: 'SERVER' } } },
+		{ time: Date.now(), reason: { kind: 'completed' } },
+		{ time: Date.now(), reason: { kind: 'error', error: { code: 'AUTH' } } }
+	];
+	for (const item of cases) {
 		const state = createContext();
-		apply(state.ctx, FAST);
-		assert.deepEqual(await fire(state, { failure: { code, message: code } }), { kind: 'retry' }, code);
+		apply(state.ctx, { ...FAST, sweepOnStart: true });
+		state.injected.get('sessionQuery')({
+			sessionQuery: {
+				async listSessions() { return [{ header: { id: 'old', createdAt: 1 } }]; },
+				async filterEvents(sessionId, filters) {
+					return filters[0].values[0] === 'turn/end'
+						? [{ seq: 12, time: item.time }]
+						: [{ seq: 3, time: item.time }];
+				},
+				async readEvent({ seq }) {
+					return seq === 12
+						? { target: { data: { reason: item.reason } } }
+						: { target: { data: { header: { config: { provider: 'p', model: 'm' } } } } };
+				}
+			}
+		});
+		await new Promise(resolve => { setTimeout(resolve, 40); });
+		assert.equal(state.probes.length, 0, JSON.stringify(item.reason));
 	}
 });
 
-test('a permanent failure is left to the turn', async () => {
-	for (const code of ['AUTH', 'INVALID_REQUEST', 'CONTEXT_WINDOW_EXCEEDED', 'QUOTA', 'ABORTED']) {
-		const state = createContext();
-		apply(state.ctx, FAST);
-		assert.equal(await fire(state, { failure: { code, message: code } }), undefined, code);
-	}
-});
-
-test('a downstream policy that already retries is not overridden', async () => {
-	let called = 0;
+test('a sweep that cannot read one log still continues the rest', async () => {
 	const state = createContext();
-	apply(state.ctx, FAST);
-	const decision = await fire(state, {}, async () => { called += 1; return { kind: 'retry' }; });
-	assert.equal(called, 1, 'the downstream listener runs first');
-	assert.deepEqual(decision, { kind: 'retry' });
-	// The plugin did not spend its own budget or log an attempt.
-	assert.deepEqual(state.appended, []);
-});
-
-test('right below the duck-typed context, next() resolves to an empty decision', async () => {
-	// The loop passes an ordinary function as next(), which returns undefined.
-	const state = createContext();
-	apply(state.ctx, FAST);
-	assert.deepEqual(await fire(state), { kind: 'retry' });
-});
-
-test('the resume is recorded before the wait, and nothing is model-visible', async () => {
-	const state = createContext();
-	apply(state.ctx, { ...FAST, initialDelayMs: 50, maxDelayMs: 50 });
-	await fire(state);
-	assert.equal(state.appended.length, 1);
-	const [record] = state.appended;
-	assert.equal(record.type, 'llm/retry', 'an existing durable event type, never a new one');
-	assert.equal(record.data.turn, 4);
-	assert.equal(record.data.step, 2);
-	assert.equal(record.data.provider, 'apisix');
-	assert.equal(record.data.policyKey, 'request-resume:resume');
-	assert.equal(record.data.retry, 1);
-	assert.equal(record.data.maxRetries, 3);
-	assert.equal(record.data.delayMs, 50);
-	assert.equal(record.data.failure.code, 'TIMEOUT');
-	// Only log-only events: no user, assistant, or system message is appended.
-	assert.deepEqual(state.appended.map(entry => entry.type), ['llm/retry']);
-});
-
-test('the step budget stops resuming and the failure is left as reported', async () => {
-	const state = createContext();
-	apply(state.ctx, { ...FAST, maxResumes: 2, maxResumesPerTurn: 10 });
-	assert.deepEqual(await fire(state), { kind: 'retry' });
-	assert.deepEqual(await fire(state), { kind: 'retry' });
-	assert.equal(await fire(state), undefined);
-	const refusal = state.logs.find(([level, message]) => level === 'info' && message.includes('not resumed'));
-	assert.match(refusal[1], /no budget left: step budget \(2\)/);
-});
-
-test('a turn cancelled during the backoff sends no request', async () => {
-	const state = createContext();
-	apply(state.ctx, { ...FAST, initialDelayMs: 5000, maxDelayMs: 5000 });
-	const controller = new AbortController();
-	const started = Date.now();
-	const decision = fire(state, { signal: controller.signal });
-	// The attempt is recorded before the wait starts.
-	await new Promise(resolve => { setTimeout(resolve, 10); });
-	assert.equal(state.appended.length, 1);
-	controller.abort();
-	assert.equal(await decision, undefined);
-	assert.ok(Date.now() - started < 1000, 'the wait ended with the cancellation, not the full backoff');
-});
-
-test('a failure that arrives after the turn was cancelled is ignored', async () => {
-	const state = createContext();
-	apply(state.ctx, FAST);
-	const controller = new AbortController();
-	assert.equal(await fire(state, { signal: controller.signal }, async () => {
-		controller.abort();
-		return undefined;
-	}), undefined);
-	assert.deepEqual(state.appended, []);
-});
-
-test('a turn cancelled before the listener runs sends no request', async () => {
-	const state = createContext();
-	apply(state.ctx, FAST);
-	const controller = new AbortController();
-	controller.abort();
-	assert.equal(await fire(state, { signal: controller.signal }), undefined);
-	assert.deepEqual(state.appended, []);
-});
-
-test('an agent disposed during the wait is not resumed', async () => {
-	const state = createContext();
-	apply(state.ctx, { ...FAST, initialDelayMs: 30, maxDelayMs: 30 });
-	const decision = fire(state);
-	setTimeout(() => { state.ctx.agents.get = () => undefined; }, 5);
-	assert.equal(await decision, undefined);
-});
-
-test('disabling the plugin stops a wait already in progress', async () => {
-	const state = createContext();
-	apply(state.ctx, { ...FAST, initialDelayMs: 5000, maxDelayMs: 5000 });
-	const decision = fire(state);
-	for (const dispose of state.disposers) dispose();
-	assert.equal(await decision, undefined);
-	// A later failure is ignored too.
-	assert.equal(await fire(state), undefined);
-});
-
-test('a log that refuses the record does not stop the resume', async () => {
-	const state = createContext({ appendError: new Error('log closed') });
-	apply(state.ctx, FAST);
-	assert.deepEqual(await fire(state), { kind: 'retry' });
-	assert.match(state.logs.find(([level]) => level === 'warn')[1], /could not record the resume attempt: log closed/);
+	apply(state.ctx, { ...FAST, sweepOnStart: true });
+	state.injected.get('sessionQuery')({
+		sessionQuery: {
+			async listSessions() { return [{ header: { id: 'broken' } }, { header: { id: 'good' } }]; },
+			async filterEvents(sessionId, filters) {
+				if (sessionId === 'broken') throw new Error('unreadable log');
+				return filters[0].values[0] === 'turn/end' ? [{ seq: 12, time: Date.now() }] : [{ seq: 3, time: Date.now() }];
+			},
+			async readEvent({ seq }) {
+				return seq === 12
+					? { target: { data: { reason: { kind: 'error', error: { code: 'SERVER' } } } } }
+					: { target: { data: { header: { config: { provider: 'p', model: 'm' } } } } };
+			}
+		}
+	});
+	await until(() => state.prompts.length === 1, 'the readable continuation');
+	assert.equal(state.prompts[0].sessionId, 'good');
+	assert.match(state.logs.join('\n'), /could not inspect broken: unreadable log/);
 });
 
 test('a bad setting fails activation', () => {
 	const state = createContext();
-	assert.throws(() => apply(state.ctx, { maxResumes: -1 }), /"maxResumes"/);
-});
-
-test('the plugin declares the service it reads', async () => {
-	const module = await import('../index.js');
-	assert.equal(module.name, 'request-resume');
-	assert.deepEqual(module.inject, ['agents']);
+	assert.throws(() => apply(state.ctx, { maxProbes: -1 }), /"maxProbes"/);
 });

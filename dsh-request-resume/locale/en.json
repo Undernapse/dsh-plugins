@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Request resume",
-    "description": "Resumes an interrupted turn in the same turn: when a model request fails with a timeout, rate limit, server, or transport error and the provider's own retry budget is spent, the plugin waits, then re-sends the request so the turn finishes instead of ending with \"This turn failed\". Cancelling the turn ends the wait, and per-step and per-turn budgets stop a turn that keeps failing."
+    "description": "Watches each model route instead of each turn: when turns fail on a provider and model with a timeout, rate limit, server, or transport error, the plugin sends one small probe to that route until it answers, then presses Continue on every conversation stuck on it — including conversations left failed by an earlier run. Cancelling or using a conversation yourself takes it off the list, and probe budgets stop a route that stays down from being retried forever."
   }
 }

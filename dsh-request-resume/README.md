@@ -1,105 +1,107 @@
 # Request resume
 
-A turn that loses its model request to a timeout usually does not have a
-problem worth ending. It has a request that arrived too late, or a provider
-that asked to be called again in a moment. DeepSeek Harness retries such a
-request a bounded number of times per provider route (five attempts within
-about nine seconds by default), and when that budget is spent the turn ends
-with `This turn failed: Request timed out.` You then press Continue, or type
-something, to get the work moving again.
+A turn that loses its model request to a timeout does not have a problem worth
+ending. The usual cause is a provider that is briefly unavailable, and the usual
+outcome is that every conversation using that provider and model stops at the
+same moment — you come back to several chats all reading `This turn failed`.
 
-This plugin does that for you. When a model request fails with a transient
-error and the route's own retries are spent, it waits a moment and re-sends the
-request — in the same turn, over the same conversation, with nothing new for
-the model to read. The turn pauses, then carries on.
+This plugin watches the cause rather than the symptoms. It groups failed turns
+by their `provider` and `model`, keeps one availability probe per route, and
+when that route answers again it presses Continue on every conversation waiting
+on it. Fifty chats stuck on one dead route cost one probe and recover together.
 
-## Using it
+## How it works
 
-There is nothing to configure to start. Once installed, a turn whose request
-fails with `TIMEOUT`, `TRANSPORT`, `SERVER`, `RATE_LIMIT`, `STREAM_CLOSED`,
-`EMPTY_RESPONSE`, or `MALFORMED_RESPONSE` is resumed instead of ending, up to
-the budgets below. Each resume is logged (`request-resume: TIMEOUT on apisix
-(turn 4, step 2); retrying in 4000 ms …`), so you can tell a resumed turn from
-a hung one.
+1. **Notice.** A turn ending with a retryable failure (`TIMEOUT`, `TRANSPORT`,
+   `SERVER`, `RATE_LIMIT`, `STREAM_CLOSED`, `EMPTY_RESPONSE`) is recorded under
+   its route, read from the Session's own request header. Nothing is retried in
+   the failed turn; it ends with its error, as it would without the plugin.
+2. **Probe once per route.** The route gets one probe loop, no matter how many
+   conversations are waiting. A probe is a one-token request to that exact
+   provider and model, so it proves the route works rather than guessing from
+   metadata. The first waits `initialProbeDelayMs`, then the wait doubles up to
+   `maxProbeDelayMs`.
+3. **Continue everything waiting.** When a probe succeeds, every conversation
+   on that route receives Continue — the Session controller's own `prompt` with
+   empty content, exactly what the button sends. That reuses the controller's
+   eligibility rule and its Agent resume path, so a chat closed days ago comes
+   back with its own preset.
 
-The pause is visible and the turn is still yours: pressing Stop during the
-wait cancels the turn, and the interface shows the failure that happened rather
-than pretending it did not.
+Conversations are spaced by `resumeIntervalMs` after a recovery, so a backlog
+does not arrive at the provider as one burst.
 
-## What it does and does not do
+## What counts as stuck
 
-- **Same turn, same step.** A resume re-runs the failed step through the
-  driver's own retry path, so the retried request is part of the session log
-  exactly like the original. No user message is added and no message text
-  changes.
-- **Never ahead of the provider's own policy.** The plugin acts only when the
-  adapter's `retryPolicy` has declined the failure — because its budget is
-  spent or the code is outside its policy. Raise the adapter's own limits in
-  the provider row if you want more retries inside it; this plugin covers what
-  lies beyond.
-- **Transient failures only.** Permanent failures are never resumed, because
-  another request cannot fix them: bad credentials (`AUTH`,
-  `MISSING_CREDENTIAL`, `INVALID_CREDENTIAL`), refused requests
-  (`INVALID_REQUEST`, `CONTENT_REFUSED`), an exhausted plan (`QUOTA`,
-  `ACCOUNT_QUOTA`), a context window that will not fit (`CONTEXT_WINDOW_EXCEEDED`),
-  and an unavailable model (`MODEL_UNSUPPORTED`, `UNKNOWN_MODEL`). This holds
-  even if you list such a code in `resumeCodes`.
-- **Bounded.** A step and a turn each have a resume budget and a time window,
-  so a provider that is simply down cannot keep one turn running forever. When
-  a budget runs out the failure stands, exactly as it would without the plugin.
-- **Not a crash recovery.** It resumes failed requests in a turn that is still
-  open. A turn cut short by a crash or by closing the application is not
-  resumed on the next start.
+The plugin watches exactly the failures the Harness itself offers Continue for.
+Permanent failures are never watched, because a probe cannot fix them: bad
+credentials, refused requests, an exhausted plan, a context window that will not
+fit, an unavailable model. A probe that fails with one of those stops the watch
+immediately instead of waiting out the budget.
+
+A conversation leaves the list as soon as anything else happens to it: a
+completed turn, a cancellation, or your own Continue. The controller would
+refuse a second continuation anyway; this keeps the plugin from collecting stale
+entries. When a route's budget runs out — `maxProbes` or `maxProbeWaitMs` — the
+watch stops and its conversations keep their failed turn, exactly as without the
+plugin.
+
+## Earlier runs
+
+At startup the plugin looks for conversations that were left failed by an
+earlier run: the last turn of each Session within `sweepDays`, up to
+`sweepMaxSessions` sessions, skipping subagent children. A route that is healthy
+again is continued immediately; a route that is still down joins the normal
+probe loop. Set `sweepOnStart: false` to watch only failures that happen while
+the application is running.
+
+The sweep needs a Session query backend (`ctx.sessionQuery`, mounted by
+`@deepseek-ai/dsh-session-query-sqlite`) and simply does nothing without one.
 
 ## Configuration
 
-Every setting lives in the plugin row, and the defaults in
-`cordis.patch.yml` are the defaults here. A profile patch that names the
-`request-resume` row replaces the whole `config` map, so restate the keys you
-need when you override one.
+Every setting lives in the plugin row, and the defaults in `cordis.patch.yml`
+are the defaults here. A profile patch that names the `request-resume` row
+replaces the whole `config` map, so restate the keys you need.
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `resumeCodes` | `TIMEOUT`, `TRANSPORT`, `SERVER`, `RATE_LIMIT`, `STREAM_CLOSED`, `EMPTY_RESPONSE`, `MALFORMED_RESPONSE` | Failure codes worth another request. Must be non-empty. |
-| `maxResumes` | `3` | Resumes one step may spend. |
-| `initialDelayMs` | `2000` | Wait before the first resume of a step. |
-| `maxDelayMs` | `60000` | Cap on that wait; each later resume doubles it up to here. |
-| `maxProviderDelayMs` | `300000` | A longer provider `Retry-After` is ignored in favor of a capped local wait. |
-| `maxStepDurationMs` | `600000` | A step failing longer than this is not resumed. `0` disables the window. |
-| `maxResumesPerTurn` | `6` | Resumes one turn may spend across all of its steps. |
-| `maxTurnDurationMs` | `1800000` | A turn failing longer than this is not resumed. `0` disables the window. |
+| `resumeCodes` | `TIMEOUT`, `TRANSPORT`, `SERVER`, `RATE_LIMIT`, `STREAM_CLOSED`, `EMPTY_RESPONSE` | Failures that leave a conversation worth continuing. |
+| `initialProbeDelayMs` | `5000` | Wait before a route's first probe. |
+| `maxProbeDelayMs` | `300000` | Cap on that wait; each later probe doubles it up to here. |
+| `maxProbeWaitMs` | `7200000` | Stop watching a route after this long. `0` disables the window. |
+| `maxProbes` | `60` | Stop watching a route after this many probes. |
+| `probeTimeoutMs` | `30000` | Deadline for one probe request. |
+| `probeText` | `ping` | Text of the probe request. |
+| `probeMaxTokens` | `1` | Output-token ceiling of the probe. |
+| `resumeIntervalMs` | `1000` | Spacing between Continues after a recovery. |
+| `sweepOnStart` | `true` | Look for conversations left failed by an earlier run. |
+| `sweepDays` | `3` | How old such a failure may be. |
+| `sweepMaxSessions` | `200` | Most Session logs the sweep reads. |
 
-For example, to wait longer and allow fewer attempts:
+A longer outage recovery, with a tighter request cap:
 
 ```yaml
 - id: request-resume
   name: '@undernapse/dsh-request-resume'
   config:
-    initialDelayMs: 5000
-    maxDelayMs: 120000
-    maxResumes: 2
+    initialProbeDelayMs: 10000
+    maxProbeDelayMs: 600000
+    maxProbeWaitMs: 21600000
+    maxProbes: 40
 ```
-
-A provider `Retry-After` within `maxProviderDelayMs` wins over the local
-backoff, because the provider knows when it will serve a request again.
 
 ## Where it hooks in
 
-The plugin listens on `agent/request-error`, the waterfall the agent loop
-raises for every failed model request in an open step, and the same extension
-point `@deepseek-ai/dsh-llm-retry` uses. It calls the rest of the chain first
-and only acts when nobody else retried. After the backoff it answers
-`{ kind: 'retry' }`, which makes the driver re-run the failed step inside the
-open turn; the failure never becomes `turn/end`.
+- `session/event` for `turn/end`, on the Host, so every live Session is covered
+  whether or not its chat is open.
+- `ctx.llm.stream()` for the probe: a provider-neutral one-shot request that
+  never reaches a Session log and never becomes a message.
+- `ctx.sessionController.prompt()` for the Continue, the same call the interface
+  makes, so eligibility and Agent resume stay owned by that controller.
 
-Each scheduled resume is recorded before its wait, as an `llm/retry` event —
-the durable record the built-in retry already writes. Using the existing event
-type rather than a new one keeps the session readable by every current reader
-and keeps a resumed request replayable. If the record cannot be written, the
-resume still happens and the failure is logged.
-
-The plugin needs the `agents` service. It keeps no state that outlives the
-turn: the event log holds the record of every resume.
+The plugin declares `llm`, `sessionController`, and `sessions` as required
+services, so it stays inactive in a profile that has no Session controller
+rather than failing on first use.
 
 ## Install
 
@@ -119,10 +121,12 @@ row `request-resume`; nothing else in the profile needs to change.
 node --test test/
 ```
 
-`test/policy.test.mjs` covers the configuration, eligibility, backoff, budgets,
-and the cancellable wait. `test/plugin.test.mjs` runs the shipped `apply`
-against a stand-in context: it checks that transient codes resume in the same
-turn, that permanent codes and a downstream retry are left alone, that the
-attempt is recorded as `llm/retry` with nothing model-visible appended, that
-budgets stop resuming, and that cancellation, disposal, plugin unload, and a
-failing log are all handled.
+`test/watch.test.mjs` covers configuration, the failure set, the probe schedule
+and limits, and the grouping ledger. `test/plugin.test.mjs` runs the shipped
+`apply` against a stand-in Host: it checks that one route with three stuck chats
+costs a single probe and continues all three, that routes recover
+independently, that a failing probe backs off, that a hopeless probe or an
+exhausted budget stops the watch, that a later completed turn drops a
+conversation, that a refused Continue does not stop the rest, and that the
+startup sweep handles old, completed, permanent, unreadable, and subagent
+Sessions correctly.
