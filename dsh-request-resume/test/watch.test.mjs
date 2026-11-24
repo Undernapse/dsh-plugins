@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+	Continues,
 	DEFAULTS,
 	PERMANENT_CODES,
 	Pending,
@@ -172,4 +173,33 @@ test('the shipped patch defaults are valid and match the code', async () => {
 	// with a default the README no longer describes; this keeps them identical.
 	assert.deepEqual(configured, { ...DEFAULTS });
 	assert.deepEqual(resolveConfig(configured), DEFAULTS);
+});
+
+test('a conversation is continued a limited number of times inside the window', () => {
+	const policy = resolveConfig({ maxResumesPerSession: 2, sessionResumeWindowMs: 1000 });
+	const continues = new Continues(policy);
+	assert.deepEqual(continues.allow('a', 0), { allowed: true, used: 0 });
+	continues.spend('a', 0);
+	continues.spend('a', 10);
+	assert.deepEqual(continues.allow('a', 20), { allowed: false, used: 2 });
+	// Past the window the conversation is eligible again.
+	assert.deepEqual(continues.allow('a', 1020), { allowed: true, used: 0 });
+	// A different conversation has its own history.
+	assert.deepEqual(continues.allow('b', 0), { allowed: true, used: 0 });
+});
+
+test('a completed turn clears a conversation’s continue history', () => {
+	const policy = resolveConfig({ maxResumesPerSession: 1 });
+	const continues = new Continues(policy);
+	continues.spend('a', 0);
+	assert.equal(continues.allow('a', 1).allowed, false);
+	continues.reset('a');
+	assert.equal(continues.allow('a', 2).allowed, true);
+});
+
+test('a window of zero never expires the count', () => {
+	const policy = resolveConfig({ maxResumesPerSession: 1, sessionResumeWindowMs: 0 });
+	const continues = new Continues(policy);
+	continues.spend('a', 0);
+	assert.equal(continues.allow('a', 1e12).allowed, false);
 });

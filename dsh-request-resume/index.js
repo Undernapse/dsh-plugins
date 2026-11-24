@@ -25,6 +25,7 @@
 
 import { randomUUID } from 'node:crypto';
 import {
+	Continues,
 	Pending,
 	isHopeless,
 	isResumable,
@@ -69,12 +70,14 @@ function routeOf(config) {
 export function apply(ctx, config = {}) {
 	const policy = resolveConfig(config);
 	const pending = new Pending();
+	const continues = new Continues(policy);
 	/** @type {Map<string, {provider: string, model: string, timer: ReturnType<typeof setTimeout> | undefined, probes: number, startedAt: number, controller: AbortController | undefined}>} */
 	const runs = new Map();
 	const lifetime = new AbortController();
 
 	ctx.effect(() => () => {
 		lifetime.abort();
+		continues.clear();
 		for (const run of runs.values()) {
 			if (run.timer !== undefined) clearTimeout(run.timer);
 			run.controller?.abort();
@@ -235,6 +238,8 @@ export function apply(ctx, config = {}) {
 				mode: 'queue',
 				content: []
 			}, lifetime.signal);
+			// Count only accepted continues: a refused one changed nothing.
+			continues.spend(entry.sessionId, Date.now());
 			ctx.logger.info(
 				`request-resume: continued ${entry.sessionId} on ${entry.provider}/${entry.model} `
 				+ `after its failed turn ${entry.failureSeq}`
@@ -254,8 +259,21 @@ export function apply(ctx, config = {}) {
 		const failure = reason.kind === 'error' ? reason.error : undefined;
 		// Any other ending supersedes an earlier failure: the conversation moved
 		// on, so continuing it would replay work the user already restarted.
+		// A turn that completed also clears its continue history, so a later and
+		// unrelated outage is still covered.
 		if (failure === undefined || !isResumable(policy, failure)) {
 			pending.drop(session.id);
+			if (reason.kind === 'completed') continues.reset(session.id);
+			return;
+		}
+		// A route that recovers and immediately fails again must not continue the
+		// same conversation forever; the route budgets alone cannot see that.
+		const allowed = continues.allow(session.id, Date.now());
+		if (!allowed.allowed) {
+			ctx.logger.info(
+				`request-resume: ${session.id} already continued ${allowed.used} time(s); `
+				+ 'leaving its failed turn to the user'
+			);
 			return;
 		}
 		const route = routeOf(session.requestHeader()?.config);

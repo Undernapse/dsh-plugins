@@ -357,3 +357,29 @@ test('a bad setting fails activation', () => {
 	const state = createContext();
 	assert.throws(() => apply(state.ctx, { maxProbes: -1 }), /"maxProbes"/);
 });
+
+test('a route that keeps flapping stops continuing one conversation forever', async () => {
+	const state = createContext();
+	apply(state.ctx, { ...FAST, maxResumesPerSession: 2, sessionResumeWindowMs: 3600000 });
+	// The route answers every probe, but the continued turn fails again each
+	// time: without a per-conversation ceiling this would never stop.
+	for (let round = 0; round < 4; round += 1) {
+		turnEnd(state, { code: 'SERVER', seq: 100 + round });
+		await until(() => state.prompts.length === Math.min(round + 1, 2), `round ${round}`);
+		await new Promise(resolve => { setTimeout(resolve, 20); });
+	}
+	assert.equal(state.prompts.length, 2, 'continued twice, then left to the user');
+	assert.match(state.logs.join('\n'), /already continued 2 time\(s\); leaving its failed turn to the user/);
+});
+
+test('a completed turn gives a conversation a fresh continue budget', async () => {
+	const state = createContext();
+	apply(state.ctx, { ...FAST, maxResumesPerSession: 1 });
+	turnEnd(state, { sessionId: 'a', code: 'SERVER', seq: 1 });
+	await until(() => state.prompts.length === 1, 'the first continue');
+	turnEnd(state, { sessionId: 'a', code: undefined, seq: 2 });
+	// A later, unrelated outage is still covered.
+	turnEnd(state, { sessionId: 'a', code: 'TIMEOUT', seq: 3 });
+	await until(() => state.prompts.length === 2, 'the second continue');
+	assert.equal(state.prompts.length, 2);
+});

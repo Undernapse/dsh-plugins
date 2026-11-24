@@ -34,6 +34,11 @@
         # Spacing between the Continues sent after a route recovers, so a
         # backlog does not arrive as one burst.
         resumeIntervalMs: 1000
+        # A conversation is continued at most this many times inside the window,
+        # so a route that recovers and immediately fails again cannot continue
+        # one chat forever. A completed turn clears the count.
+        maxResumesPerSession: 2
+        sessionResumeWindowMs: 3600000
         # Look for conversations left failed by an earlier run: a swap sweep at
         # startup over the last `sweepDays`, at most `sweepMaxSessions` logs.
         sweepOnStart: true

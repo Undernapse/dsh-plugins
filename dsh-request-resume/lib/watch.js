@@ -61,6 +61,8 @@ export const DEFAULTS = Object.freeze({
 	probeText: 'ping',
 	probeMaxTokens: 1,
 	resumeIntervalMs: 1000,
+	maxResumesPerSession: 2,
+	sessionResumeWindowMs: 3600000,
 	sweepOnStart: true,
 	sweepDays: 3,
 	sweepMaxSessions: 200
@@ -147,6 +149,8 @@ export function resolveConfig(config = {}) {
 		probeText: merged.probeText,
 		probeMaxTokens: count(merged.probeMaxTokens, 'probeMaxTokens'),
 		resumeIntervalMs: count(merged.resumeIntervalMs, 'resumeIntervalMs'),
+		maxResumesPerSession: count(merged.maxResumesPerSession, 'maxResumesPerSession'),
+		sessionResumeWindowMs: count(merged.sessionResumeWindowMs, 'sessionResumeWindowMs'),
 		sweepOnStart: merged.sweepOnStart,
 		sweepDays: count(merged.sweepDays, 'sweepDays'),
 		sweepMaxSessions: count(merged.sweepMaxSessions, 'sweepMaxSessions')
@@ -218,6 +222,75 @@ export function watchLimit(policy, run, now) {
 		return `${policy.maxProbeWaitMs} ms`;
 	}
 	return undefined;
+}
+
+/**
+ * How often each conversation has already been continued.
+ *
+ * Route budgets are per run, so a route that recovers and immediately fails
+ * again would otherwise continue the same conversation forever. This ledger
+ * caps that: a conversation is continued `maxResumesPerSession` times inside
+ * `sessionResumeWindowMs`, and a completed turn clears its history so a later,
+ * unrelated outage is still covered.
+ */
+export class Continues {
+	/** @param {Readonly<typeof DEFAULTS>} policy - resolved configuration. */
+	constructor(policy) {
+		this.policy = policy;
+		/** @type {Map<string, {count: number, firstAt: number}>} */
+		this.#state = new Map();
+	}
+
+	/** @type {Map<string, {count: number, firstAt: number}>} */
+	#state;
+
+	/**
+	 * Whether one conversation may be continued again.
+	 * @param {string} sessionId - the conversation.
+	 * @param {number} now - current time in epoch milliseconds.
+	 * @returns {{allowed: boolean, used: number}} the decision and how many were used.
+	 */
+	allow(sessionId, now) {
+		const entry = this.#state.get(sessionId);
+		if (entry === undefined) return { allowed: true, used: 0 };
+		if (this.policy.sessionResumeWindowMs > 0 && now - entry.firstAt >= this.policy.sessionResumeWindowMs) {
+			this.#state.delete(sessionId);
+			return { allowed: true, used: 0 };
+		}
+		return { allowed: entry.count < this.policy.maxResumesPerSession, used: entry.count };
+	}
+
+	/**
+	 * Record one continue spent on a conversation.
+	 * @param {string} sessionId - the conversation.
+	 * @param {number} now - current time in epoch milliseconds.
+	 * @returns {void}
+	 */
+	spend(sessionId, now) {
+		const entry = this.#state.get(sessionId);
+		if (entry === undefined) {
+			this.#state.set(sessionId, { count: 1, firstAt: now });
+			return;
+		}
+		entry.count += 1;
+	}
+
+	/**
+	 * Forget a conversation, because it finished a turn of its own.
+	 * @param {string} sessionId - the conversation.
+	 * @returns {void}
+	 */
+	reset(sessionId) {
+		this.#state.delete(sessionId);
+	}
+
+	/**
+	 * Forget every conversation, when the plugin unloads.
+	 * @returns {void}
+	 */
+	clear() {
+		this.#state.clear();
+	}
 }
 
 /**

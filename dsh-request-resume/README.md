@@ -38,6 +38,13 @@ credentials, refused requests, an exhausted plan, a context window that will not
 fit, an unavailable model. A probe that fails with one of those stops the watch
 immediately instead of waiting out the budget.
 
+A route that recovers and immediately fails again is the other half of that
+promise: route budgets reset with each run, so without a separate limit one
+conversation on a flapping route would be continued forever. A conversation is
+therefore continued at most `maxResumesPerSession` times inside
+`sessionResumeWindowMs`; after that it keeps its failed turn and a completed
+turn gives it a fresh budget.
+
 A conversation leaves the list as soon as anything else happens to it: a
 completed turn, a cancellation, or your own Continue. The controller would
 refuse a second continuation anyway; this keeps the plugin from collecting stale
@@ -74,6 +81,8 @@ replaces the whole `config` map, so restate the keys you need.
 | `probeText` | `ping` | Text of the probe request. |
 | `probeMaxTokens` | `1` | Output-token ceiling of the probe. |
 | `resumeIntervalMs` | `1000` | Spacing between Continues after a recovery. |
+| `maxResumesPerSession` | `2` | Continues one conversation may receive inside the window. |
+| `sessionResumeWindowMs` | `3600000` | Window for that count. `0` never expires it. |
 | `sweepOnStart` | `true` | Look for conversations left failed by an earlier run. |
 | `sweepDays` | `3` | How old such a failure may be. |
 | `sweepMaxSessions` | `200` | Most Session logs the sweep reads. |
