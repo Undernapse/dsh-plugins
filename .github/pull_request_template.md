@@ -10,6 +10,7 @@
 
 - [ ] `dsh-tracker-issue-workflow`
 - [ ] `dsh-web-search-searxng`
+- [ ] `dsh-request-resume`
 
 ## Checks
 

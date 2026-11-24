@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Request resume",
+    "description": "Resumes an interrupted turn in the same turn: when a model request fails with a timeout, rate limit, server, or transport error and the provider's own retry budget is spent, the plugin waits, then re-sends the request so the turn finishes instead of ending with \"This turn failed\". Cancelling the turn ends the wait, and per-step and per-turn budgets stop a turn that keeps failing."
+  }
+}

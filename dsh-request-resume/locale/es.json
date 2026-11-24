@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Reanudación de solicitudes",
+    "description": "Reanuda un turno interrumpido dentro del mismo turno: cuando una solicitud al modelo falla por tiempo de espera, límite de peticiones, servidor o transporte y el proveedor ya agotó sus propios reintentos, el plugin espera y vuelve a enviar la solicitud para que el turno termine en lugar de cerrarse con «Este turno ha fallado». Cancelar el turno detiene la espera, y los límites por paso y por turno evitan que un turno que falla una y otra vez siga reintentando."
+  }
+}

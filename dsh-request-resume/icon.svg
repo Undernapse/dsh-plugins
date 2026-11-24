@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" width="36" height="36" role="img" aria-label="Request resume">
+  <path d="M28.6 18a10.6 10.6 0 1 1-3.1-7.5" fill="none" stroke="#3f76d8" stroke-width="2.8" stroke-linecap="round"/>
+  <path d="M26.1 5.9v5.6h-5.6" fill="none" stroke="#3f76d8" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="18" cy="18" r="2.4" fill="#2fa795"/>
+</svg>

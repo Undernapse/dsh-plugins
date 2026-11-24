@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Wiederaufnahme von Anfragen",
+    "description": "Setzt einen unterbrochenen Turn im selben Turn fort: Scheitert eine Modellanfrage an Zeitüberschreitung, Ratenlimit, Server- oder Transportfehler und ist das eigene Wiederholungsbudget des Anbieters aufgebraucht, wartet das Plugin und sendet die Anfrage erneut, damit der Turn zu Ende läuft, statt mit „Dieser Turn ist fehlgeschlagen“ abzubrechen. Ein Abbruch des Turns beendet die Wartezeit, und Obergrenzen je Schritt und je Turn verhindern endlose Wiederholungen."
+  }
+}

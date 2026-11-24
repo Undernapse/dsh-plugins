@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Reprise des requêtes",
+    "description": "Reprend un tour interrompu dans le même tour : lorsqu’une requête au modèle échoue sur un délai d’attente, une limite de débit, une erreur de serveur ou de transport et que le fournisseur a épuisé ses propres tentatives, le plugin attend puis renvoie la requête afin que le tour se termine au lieu de se clore par « Ce tour a échoué ». Annuler le tour arrête l’attente, et des limites par étape et par tour empêchent un tour qui échoue sans cesse de réessayer indéfiniment."
+  }
+}

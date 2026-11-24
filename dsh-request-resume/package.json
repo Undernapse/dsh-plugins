@@ -1,0 +1,39 @@
+{
+  "name": "@undernapse/dsh-request-resume",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Resumes interrupted turns in the same turn: re-sends a failed model request after a backoff once the provider's own retry budget is spent",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Undernapse/dsh-plugins.git",
+    "directory": "dsh-request-resume"
+  },
+  "type": "module",
+  "main": "index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./lib/policy.js": "./lib/policy.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "lib/policy.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "license": "MIT"
+}

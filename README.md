@@ -10,6 +10,7 @@ Undernapse. Each subdirectory is a self-contained plugin package with its own
 | --- | --- |
 | [`dsh-tracker-issue-workflow`](dsh-tracker-issue-workflow/README.md) | Right-click a GitHub, Forgejo, Gitea, or GitHub Enterprise issue link to start `/ugo`, `/ufast`, or `/uloop` on it, in a new session or the current one. |
 | [`dsh-web-search-searxng`](dsh-web-search-searxng/README.md) | Searches the web through a SearXNG instance, and shows the sites each search cited in Chat. |
+| [`dsh-request-resume`](dsh-request-resume/README.md) | Resumes a turn whose model request failed with a transient error, in the same turn, once the provider's own retries are spent. |
 
 ## Install a plugin
 
