@@ -1,0 +1,53 @@
+# One row: the plugin watches a model route whose turns failed, probes it until
+# it answers, then continues every conversation stuck on that route. Every
+# setting lives on this row because a profile patch that names this id replaces
+# the whole `config` map, never merges into it.
+- insert:
+    - id: request-resume
+      name: '@undernapse/dsh-request-resume'
+      config:
+        # Failures that leave a conversation worth continuing. These are the
+        # codes the Harness itself offers Continue for; a wider list would only
+        # produce resumes its continuation check rejects.
+        resumeCodes:
+          - TIMEOUT
+          - TRANSPORT
+          - SERVER
+          - RATE_LIMIT
+          - STREAM_CLOSED
+          - EMPTY_RESPONSE
+        # Wait before the first probe of a route, doubling up to the cap. A
+        # route that recovers quickly is picked up quickly; a long outage costs
+        # at most one request per maxProbeDelayMs.
+        initialProbeDelayMs: 5000
+        maxProbeDelayMs: 300000
+        # Stop watching a route once it has survived this long or this many
+        # probes. Its conversations keep their failed turn, as without the
+        # plugin. 0 disables the time window.
+        maxProbeWaitMs: 7200000
+        maxProbes: 60
+        # One probe request: its timeout, text, and output-token ceiling. The
+        # probe is a real request, so it proves the route works, but it is tiny.
+        probeTimeoutMs: 30000
+        probeText: ping
+        probeMaxTokens: 1
+        # Spacing between the Continues sent after a route recovers, so a
+        # backlog does not arrive as one burst.
+        resumeIntervalMs: 1000
+        # A conversation is continued at most this many times inside the window,
+        # so a route that recovers and immediately fails again cannot continue
+        # one chat forever. A completed turn clears the count.
+        maxResumesPerSession: 2
+        sessionResumeWindowMs: 3600000
+        # Optional path for a JSON-lines trace of what this plugin did: which
+        # failures it found, which route it probed, and which continues were
+        # accepted or refused. Empty disables it.
+        diagnosticsFile: ''
+        # Look for conversations left failed by an earlier run: a swap sweep at
+        # startup over the last `sweepDays`, at most `sweepMaxSessions` logs.
+        sweepOnStart: true
+        sweepDays: 3
+        sweepMaxSessions: 200
+        # Reading a log costs its full decode, so the scan also has a time
+        # budget; the newest Sessions are considered first.
+        sweepMaxMs: 15000

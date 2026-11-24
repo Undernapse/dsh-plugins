@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Retomada de requisições",
+    "description": "Monitora cada rota de modelo em vez de cada turno: quando turnos falham em um provedor e modelo por tempo esgotado, limite de taxa, servidor ou transporte, o plugin envia uma pequena sonda a essa rota até que ela responda e então envia «Continuar» a todas as conversas presas nela, inclusive as que ficaram falhas em uma execução anterior. Se você cancelar ou continuar uma conversa, ela sai da lista, e os limites de sondas evitam repetir para sempre uma rota fora do ar."
+  }
+}

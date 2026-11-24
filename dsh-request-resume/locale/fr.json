@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Reprise des requêtes",
+    "description": "Surveille chaque route de modèle plutôt que chaque tour : lorsque des tours échouent sur un fournisseur et un modèle à cause d’un délai d’attente, d’une limite de débit, d’une erreur de serveur ou de transport, le plugin envoie une petite sonde à cette route jusqu’à ce qu’elle réponde, puis envoie « Continuer » à toutes les conversations bloquées dessus, y compris celles restées en échec lors d’une exécution précédente. Annuler ou reprendre vous-même une conversation la retire de la liste, et des limites de sondes empêchent de réessayer indéfiniment une route hors service."
+  }
+}

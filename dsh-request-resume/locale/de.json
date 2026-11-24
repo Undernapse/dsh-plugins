@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Wiederaufnahme von Anfragen",
+    "description": "Beobachtet jede Modellroute statt jedes Turns: Scheitern Turns bei einem Anbieter und Modell an Zeitüberschreitung, Ratenlimit, Server- oder Transportfehler, sendet das Plugin eine kleine Probe an diese Route, bis sie antwortet, und drückt dann bei jeder darauf hängenden Unterhaltung „Fortsetzen“ – auch bei Unterhaltungen, die in einem früheren Lauf fehlgeschlagen sind. Brichst du eine Unterhaltung ab oder setzt sie selbst fort, fällt sie von der Liste; Probe-Obergrenzen verhindern endlose Wiederholungen bei einer dauerhaft ausgefallenen Route."
+  }
+}

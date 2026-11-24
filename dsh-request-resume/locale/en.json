@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Request resume",
+    "description": "Watches each model route instead of each turn: when turns fail on a provider and model with a timeout, rate limit, server, or transport error, the plugin sends one small probe to that route until it answers, then presses Continue on every conversation stuck on it — including conversations left failed by an earlier run. Cancelling or using a conversation yourself takes it off the list, and probe budgets stop a route that stays down from being retried forever."
+  }
+}
