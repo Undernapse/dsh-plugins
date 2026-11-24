@@ -24,6 +24,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { appendFileSync } from 'node:fs';
 import {
 	Continues,
 	Pending,
@@ -69,6 +70,17 @@ function routeOf(config) {
  */
 export function apply(ctx, config = {}) {
 	const policy = resolveConfig(config);
+	// A trace file is the only way to see these decisions on a Host whose log
+	// output is not captured, so it is available but off by default.
+	const diag = (event) => {
+		if (policy.diagnosticsFile === '') return;
+		try {
+			appendFileSync(policy.diagnosticsFile, `${new Date().toISOString()} ${JSON.stringify(event)}\n`);
+		} catch {
+			// A trace that cannot be written must never affect recovery.
+		}
+	};
+	diag({ phase: 'apply', sweepOnStart: policy.sweepOnStart, codes: policy.resumeCodes });
 	const pending = new Pending();
 	const continues = new Continues(policy);
 	/** @type {Map<string, {provider: string, model: string, timer: ReturnType<typeof setTimeout> | undefined, probes: number, startedAt: number, controller: AbortController | undefined}>} */
@@ -182,6 +194,7 @@ export function apply(ctx, config = {}) {
 		// Disposal or a cancelled wait ends the run without another probe.
 		if (lifetime.signal.aborted || !runs.has(key)) return;
 
+		diag({ phase: 'probe', route: `${provider}/${model}`, failure: failure ?? 'ok' });
 		if (failure === undefined) {
 			ctx.logger.info(`request-resume: ${provider}/${model} answered again; continuing ${waiting} conversation(s)`);
 			runs.delete(key);
@@ -232,12 +245,14 @@ export function apply(ctx, config = {}) {
 	 */
 	async function continueOne(entry) {
 		try {
+			diag({ phase: 'continue-attempt', session: entry.sessionId });
 			await ctx.sessionController.prompt({
 				sessionId: entry.sessionId,
 				requestId: randomUUID(),
 				mode: 'queue',
 				content: []
 			}, lifetime.signal);
+			diag({ phase: 'continue-ok', session: entry.sessionId });
 			// Count only accepted continues: a refused one changed nothing.
 			continues.spend(entry.sessionId, Date.now());
 			ctx.logger.info(
@@ -245,6 +260,7 @@ export function apply(ctx, config = {}) {
 				+ `after its failed turn ${entry.failureSeq}`
 			);
 		} catch (error) {
+			diag({ phase: 'continue-failed', session: entry.sessionId, error: describe(error) });
 			// No longer idle on that failure, no longer continuable, or the
 			// Session went away: nothing to repair, so the entry stays dropped.
 			ctx.logger.info(
@@ -301,15 +317,29 @@ export function apply(ctx, config = {}) {
 	 * @returns {Promise<void>} when the sweep settled.
 	 */
 	async function sweep(query) {
+		diag({ phase: 'sweep-start' });
 		const cutoff = Date.now() - policy.sweepDays * 86400000;
 		let seen = 0;
-		for (const record of await query.listSessions(lifetime.signal)) {
+		const listed = await query.listSessions(lifetime.signal);
+		diag({ phase: 'sweep-listed', count: listed.length });
+		// Reading a log costs its full decode, so the scan is bounded by count and
+		// by time: a large corpus must not turn startup into a long I/O burst.
+		const startedAt = Date.now();
+		for (const record of listed) {
 			if (lifetime.signal.aborted) return;
 			// A subagent child is not a conversation the user can continue.
 			if (record.header.origin === 'subagent') continue;
 			if (seen >= policy.sweepMaxSessions) break;
+			if (Date.now() - startedAt >= policy.sweepMaxMs) {
+				ctx.logger.info(`request-resume: sweep stopped after ${seen} sessions (${policy.sweepMaxMs} ms)`);
+				break;
+			}
+			// A cold Session created before the window cannot hold a failure from
+			// inside it; a live one is still worth reading.
+			if (!record.live && record.header.createdAt < cutoff) continue;
 			seen += 1;
 			const failed = await lastFailure(query, record.header.id, cutoff);
+			diag({ phase: 'candidate', session: record.header.id, failed: failed ?? null });
 			if (failed === undefined) continue;
 			const { key, isNewRoute } = pending.record({ ...failed, sessionId: record.header.id, since: Date.now() });
 			ctx.logger.info(
@@ -329,14 +359,17 @@ export function apply(ctx, config = {}) {
 	 */
 	async function lastFailure(query, sessionId, cutoff) {
 		try {
-			const endings = await query.filterEvents(sessionId, [{ kind: 'type', values: ['turn/end'] }]);
-			const ending = endings.at(-1);
+			// Structural events (turn/end, request/header) carry no text, so they
+			// never appear in `filterEvents`; the record list is the only view
+			// that sees them.
+			const records = await query.listEvents(sessionId);
+			const ending = records.findLast(record => record.type === 'turn/end');
 			if (ending === undefined || ending.time < cutoff) return undefined;
 			const turn = await query.readEvent({ sessionId, seq: ending.seq });
 			const reason = turn.target.data?.reason;
 			if (reason?.kind !== 'error' || !isResumable(policy, reason.error)) return undefined;
-			const headers = await query.filterEvents(sessionId, [{ kind: 'type', values: ['request/header'] }]);
-			const header = headers.at(-1);
+			// The header of the request that failed, not of any later one.
+			const header = records.findLast(record => record.type === 'request/header' && record.seq < ending.seq);
 			if (header === undefined) return undefined;
 			const request = await query.readEvent({ sessionId, seq: header.seq });
 			const route = routeOf(request.target.data?.header?.config);

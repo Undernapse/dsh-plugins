@@ -64,8 +64,10 @@ export const DEFAULTS = Object.freeze({
 	maxResumesPerSession: 2,
 	sessionResumeWindowMs: 3600000,
 	sweepOnStart: true,
+	diagnosticsFile: '',
 	sweepDays: 3,
-	sweepMaxSessions: 200
+	sweepMaxSessions: 200,
+	sweepMaxMs: 15000
 });
 
 /** Whether a value is a non-negative safe integer. */
@@ -139,6 +141,9 @@ export function resolveConfig(config = {}) {
 	if (typeof merged.sweepOnStart !== 'boolean') {
 		throw new TypeError('request-resume: "sweepOnStart" must be a boolean');
 	}
+	if (typeof merged.diagnosticsFile !== 'string') {
+		throw new TypeError('request-resume: "diagnosticsFile" must be a string path');
+	}
 	return Object.freeze({
 		resumeCodes: Object.freeze(codes(merged.resumeCodes, 'resumeCodes')),
 		initialProbeDelayMs,
@@ -152,8 +157,10 @@ export function resolveConfig(config = {}) {
 		maxResumesPerSession: count(merged.maxResumesPerSession, 'maxResumesPerSession'),
 		sessionResumeWindowMs: count(merged.sessionResumeWindowMs, 'sessionResumeWindowMs'),
 		sweepOnStart: merged.sweepOnStart,
+		diagnosticsFile: merged.diagnosticsFile,
 		sweepDays: count(merged.sweepDays, 'sweepDays'),
-		sweepMaxSessions: count(merged.sweepMaxSessions, 'sweepMaxSessions')
+		sweepMaxSessions: count(merged.sweepMaxSessions, 'sweepMaxSessions'),
+		sweepMaxMs: count(merged.sweepMaxMs, 'sweepMaxMs')
 	});
 }
 

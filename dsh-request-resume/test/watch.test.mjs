@@ -160,7 +160,9 @@ function patchConfig(text) {
 			continue;
 		}
 		listKey = undefined;
-		values[key] = raw === 'true' ? true : raw === 'false' ? false : /^\d+$/.test(raw) ? Number(raw) : raw;
+		// YAML wraps some scalars in single quotes; `''` is the empty string.
+		const scalar = raw.length >= 2 && raw.startsWith("'") && raw.endsWith("'") ? raw.slice(1, -1) : raw;
+		values[key] = scalar === 'true' ? true : scalar === 'false' ? false : /^\d+$/.test(scalar) ? Number(scalar) : scalar;
 	}
 	return values;
 }

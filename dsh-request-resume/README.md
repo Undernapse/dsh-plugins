@@ -86,6 +86,8 @@ replaces the whole `config` map, so restate the keys you need.
 | `sweepOnStart` | `true` | Look for conversations left failed by an earlier run. |
 | `sweepDays` | `3` | How old such a failure may be. |
 | `sweepMaxSessions` | `200` | Most Session logs the sweep reads. |
+| `sweepMaxMs` | `15000` | Time budget for the sweep; reading a log costs its full decode. |
+| `diagnosticsFile` | empty | Path for a JSON-lines trace of what the plugin did. Empty disables it. |
 
 A longer outage recovery, with a tighter request cap:
 
@@ -108,9 +110,22 @@ A longer outage recovery, with a tighter request cap:
 - `ctx.sessionController.prompt()` for the Continue, the same call the interface
   makes, so eligibility and Agent resume stay owned by that controller.
 
+For the sweep it reads each Session's record list (`listEvents`) rather than its
+semantic search (`filterEvents`): `turn/end` and `request/header` carry no text,
+so a text search never returns them and a sweep built on it silently finds
+nothing.
+
 The plugin declares `llm`, `sessionController`, and `sessions` as required
 services, so it stays inactive in a profile that has no Session controller
 rather than failing on first use.
+
+## Seeing what it did
+
+Set `diagnosticsFile` to a path and the plugin appends one JSON line per
+decision: the failures it found and their routes, each probe and its outcome,
+and each Continue that was accepted or refused. That is the quickest way to
+answer "why didn't my chat resume" on a Host whose log output is not captured
+anywhere. Leave it empty to write nothing.
 
 ## Install
 

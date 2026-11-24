@@ -39,8 +39,15 @@
         # one chat forever. A completed turn clears the count.
         maxResumesPerSession: 2
         sessionResumeWindowMs: 3600000
+        # Optional path for a JSON-lines trace of what this plugin did: which
+        # failures it found, which route it probed, and which continues were
+        # accepted or refused. Empty disables it.
+        diagnosticsFile: ''
         # Look for conversations left failed by an earlier run: a swap sweep at
         # startup over the last `sweepDays`, at most `sweepMaxSessions` logs.
         sweepOnStart: true
         sweepDays: 3
         sweepMaxSessions: 200
+        # Reading a log costs its full decode, so the scan also has a time
+        # budget; the newest Sessions are considered first.
+        sweepMaxMs: 15000

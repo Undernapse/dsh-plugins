@@ -281,17 +281,24 @@ test('the startup sweep continues a conversation left failed by an earlier run',
 	const query = {
 		async listSessions() {
 			return [
-				{ header: { id: 'old', createdAt: 1 } },
-				{ header: { id: 'child', createdAt: 1, origin: 'subagent' } }
+				{ header: { id: 'old', createdAt: 1 }, live: true },
+				{ header: { id: 'child', createdAt: 1, origin: 'subagent' }, live: true }
 			];
 		},
-		async filterEvents(sessionId, filters) {
-			const type = filters[0].values[0];
-			if (sessionId === 'child') throw new Error('should not be read');
-			return type === 'turn/end' ? [{ seq: 12, time: Date.now() }] : [{ seq: 3, time: Date.now() }];
+		// Structural events (turn/end, request/header) carry no text, so the
+		// semantic search never returns them; the record list must be used.
+		async filterEvents() {
+			throw new Error('the sweep must not search semantic documents');
 		},
-		async readEvent({ seq }) {
-			return seq === 12
+		async listEvents(sessionId) {
+			if (sessionId === 'child') throw new Error('should not be read');
+			return [
+				{ seq: 3, type: 'request/header', time: 1 },
+				{ seq: 12, type: 'turn/end', time: Date.now() }
+			];
+		},
+		async readEvent({ sessionId, seq }) {
+			return sessionId === 'old' && seq === 12
 				? { target: { data: { reason: { kind: 'error', error: { code: 'SERVER', message: 'down' } } } } }
 				: { target: { data: { header: { config: { provider: 'apisix', model: 'auto' } } } } };
 		}
@@ -313,11 +320,12 @@ test('the sweep ignores old failures, completed turns, and permanent codes', asy
 		apply(state.ctx, { ...FAST, sweepOnStart: true });
 		state.injected.get('sessionQuery')({
 			sessionQuery: {
-				async listSessions() { return [{ header: { id: 'old', createdAt: 1 } }]; },
-				async filterEvents(sessionId, filters) {
-					return filters[0].values[0] === 'turn/end'
-						? [{ seq: 12, time: item.time }]
-						: [{ seq: 3, time: item.time }];
+				async listSessions() { return [{ header: { id: 'old', createdAt: 1 }, live: true }]; },
+				async listEvents() {
+					return [
+						{ seq: 3, type: 'request/header', time: item.time },
+						{ seq: 12, type: 'turn/end', time: item.time }
+					];
 				},
 				async readEvent({ seq }) {
 					return seq === 12
@@ -336,10 +344,18 @@ test('a sweep that cannot read one log still continues the rest', async () => {
 	apply(state.ctx, { ...FAST, sweepOnStart: true });
 	state.injected.get('sessionQuery')({
 		sessionQuery: {
-			async listSessions() { return [{ header: { id: 'broken' } }, { header: { id: 'good' } }]; },
-			async filterEvents(sessionId, filters) {
+			async listSessions() {
+				return [
+					{ header: { id: 'broken', createdAt: 1 }, live: true },
+					{ header: { id: 'good', createdAt: 1 }, live: true }
+				];
+			},
+			async listEvents(sessionId) {
 				if (sessionId === 'broken') throw new Error('unreadable log');
-				return filters[0].values[0] === 'turn/end' ? [{ seq: 12, time: Date.now() }] : [{ seq: 3, time: Date.now() }];
+				return [
+					{ seq: 3, type: 'request/header', time: 1 },
+					{ seq: 12, type: 'turn/end', time: Date.now() }
+				];
 			},
 			async readEvent({ seq }) {
 				return seq === 12
@@ -382,4 +398,33 @@ test('a completed turn gives a conversation a fresh continue budget', async () =
 	turnEnd(state, { sessionId: 'a', code: 'TIMEOUT', seq: 3 });
 	await until(() => state.prompts.length === 2, 'the second continue');
 	assert.equal(state.prompts.length, 2);
+});
+
+test('the trace file is written only when a path is configured', async () => {
+	const { mkdtemp, readFile, rm, stat } = await import('node:fs/promises');
+	const { tmpdir } = await import('node:os');
+	const { join } = await import('node:path');
+	const dir = await mkdtemp(join(tmpdir(), 'request-resume-'));
+	const file = join(dir, 'trace.log');
+	try {
+		const state = createContext();
+		apply(state.ctx, { ...FAST, diagnosticsFile: file });
+		turnEnd(state, { sessionId: 'a', provider: 'p', model: 'm', code: 'SERVER' });
+		await until(() => state.prompts.length === 1, 'the continuation');
+		const lines = (await readFile(file, 'utf8')).trim().split('\n').map(line => JSON.parse(line.slice(line.indexOf(' '))));
+		const phases = lines.map(line => line.phase);
+		assert.ok(phases.includes('apply'));
+		assert.ok(phases.includes('probe'));
+		assert.ok(phases.includes('continue-ok'));
+		assert.deepEqual(lines.find(line => line.phase === 'probe').route, 'p/m');
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+
+	// Off by default: nothing is written anywhere.
+	const quiet = createContext();
+	apply(quiet.ctx, FAST);
+	turnEnd(quiet, { code: 'SERVER' });
+	await until(() => quiet.prompts.length === 1, 'the quiet continuation');
+	await assert.rejects(stat(join(tmpdir(), 'request-resume-diag.log')));
 });
